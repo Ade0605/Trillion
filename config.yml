@@ -1,0 +1,43 @@
+# Trillion configuration — edit this file to tune behavior; no code changes needed.
+
+model: claude-sonnet-4-6
+
+# Maximum tool calls the agent may chain in a single turn before forcing a reply
+max_tool_calls_per_turn: 10
+
+# Notes directory for the search_notes tool (relative to project root)
+notes_dir: notes
+
+# Tools that require explicit confirmation before running
+confirmation_required_tools:
+  - send_message
+  - draft_message   # confirmation before returning draft (gate Tier 6 tightens this)
+  - delete_reminder
+  - web_search      # set to false once you're comfortable with it
+
+# Heartbeat check intervals (seconds)
+heartbeat:
+  enabled: true
+  checks:
+    reminder_check:
+      interval_seconds: 300   # every 5 minutes
+      enabled: true
+      priority: high
+    daily_brief:
+      interval_seconds: 86400  # once a day
+      enabled: true
+      priority: low
+      trigger_hour: 8           # 8 AM
+
+# Quiet hours: non-urgent notices are held, not surfaced
+quiet_hours:
+  enabled: true
+  start: "22:00"
+  end: "07:00"
+
+# ElevenLabs voice ID (calm, neutral, mid-range)
+elevenlabs_voice_id: EXAVITQu4vr4xnSDxMaL  # "Bella" — calm & neutral; change to any ElevenLabs voice ID
+elevenlabs_model: eleven_turbo_v2_5
+
+# Push-to-talk key (Tier 3)
+push_to_talk_key: space
