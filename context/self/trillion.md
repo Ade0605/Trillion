@@ -91,6 +91,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-17 | `b63e5c4` | Allowlist git-ignored runtime path so CI drift check passes |
 | 2026-07-17 | `715bae7` | Refresh self-knowledge recent-activity block |
 | 2026-07-17 | `3594dea` | Add contradiction checks to the self-knowledge drift checker |
 <!-- AUTO-END: recent -->

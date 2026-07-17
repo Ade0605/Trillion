@@ -12,10 +12,10 @@ jobs:
   drift:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5      # v5/v6 run on Node 24 (v4/v5 Node 20, deprecated)
         with:
           fetch-depth: 0            # full history so the recent-activity block renders
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       # The full set, not a hand-picked subset: build_registry() assembles optional
