@@ -1,11 +1,13 @@
 """
 Text-to-speech seam — ElevenLabs streaming TTS.
-Swap this file to change voice providers without touching anything else.
+Uses soundcard (WASAPI) for playback — no PortAudio dependency.
 """
 from __future__ import annotations
 
+import io
 import os
 import threading
+import wave
 from pathlib import Path
 
 import yaml
@@ -20,24 +22,18 @@ def _load_config() -> dict:
 
 
 def speak(text: str) -> None:
-    """
-    Stream text to speech via ElevenLabs and play it.
-    Respects stop() calls — stops playback mid-stream if signalled.
-    """
+    """Stream text to speech via ElevenLabs and play through default speaker."""
     _stop_event.clear()
-
-    try:
-        import elevenlabs
-        import sounddevice as sd
-        import numpy as np
-    except ImportError as e:
-        print(f"[TTS] Missing dependency: {e}. Install: pip install elevenlabs sounddevice numpy")
-        return
 
     key = os.environ.get("ELEVENLABS_API_KEY", "")
     if not key:
-        print("[TTS] ELEVENLABS_API_KEY not set in .env — speaking to console only.")
         print(f"Trillion: {text}")
+        return
+
+    try:
+        import elevenlabs
+    except ImportError:
+        print(f"[TTS] elevenlabs not installed. Trillion: {text}")
         return
 
     cfg = _load_config()
@@ -45,30 +41,41 @@ def speak(text: str) -> None:
     model_id = cfg.get("elevenlabs_model", "eleven_turbo_v2_5")
 
     try:
+        import soundcard as sc
+        import numpy as np
+
         client = elevenlabs.ElevenLabs(api_key=key)
-        audio_stream = client.text_to_speech.convert_as_stream(
+
+        # Collect streamed PCM bytes
+        audio_chunks: list[bytes] = []
+        for chunk in client.text_to_speech.stream(
             text=text,
             voice_id=voice_id,
             model_id=model_id,
             output_format="pcm_22050",
-        )
+        ):
+            if _stop_event.is_set():
+                return
+            if chunk:
+                audio_chunks.append(chunk)
 
-        sample_rate = 22050
-        chunk_size = 4096
+        if not audio_chunks or _stop_event.is_set():
+            return
 
-        with sd.RawOutputStream(
-            samplerate=sample_rate,
-            channels=1,
-            dtype="int16",
-        ) as stream:
-            for chunk in audio_stream:
+        raw = b"".join(audio_chunks)
+        # PCM int16 → float32 normalised to [-1, 1]
+        samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+
+        speaker = sc.default_speaker()
+        with speaker.player(samplerate=22050, channels=1) as p:
+            chunk_size = 2205  # ~100ms chunks so stop() is responsive
+            for i in range(0, len(samples), chunk_size):
                 if _stop_event.is_set():
                     break
-                if chunk:
-                    stream.write(chunk)
+                p.play(samples[i:i + chunk_size].reshape(-1, 1))
 
     except Exception as e:
-        print(f"[TTS] ElevenLabs error: {e}")
+        print(f"[TTS] Error: {e}")
         print(f"Trillion: {text}")
 
 

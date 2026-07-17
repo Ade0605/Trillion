@@ -46,6 +46,14 @@ def main() -> None:
     except ImportError:
         pass
 
+    # Agent Factory: mark this the live registry + hot-load approved agents
+    try:
+        from trillion.factory.tool import wire_live
+        if registry:
+            wire_live(registry)
+    except Exception:
+        pass
+
     # Tier 5: start heartbeat when available
     try:
         from trillion.heartbeat import Heartbeat
@@ -98,7 +106,8 @@ def main() -> None:
         print("Trillion > ", end="", flush=True)
         try:
             for chunk in agent.run_turn(user_input):
-                print(chunk, end="", flush=True)
+                if isinstance(chunk, str):
+                    print(chunk, end="", flush=True)
         except Exception as e:
             print(f"\n[Trillion] Something went wrong: {e}")
         print("\n")

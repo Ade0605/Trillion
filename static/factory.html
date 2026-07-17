@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trillion — Agent Factory</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; background: #06060a; color: #e2e8f5;
+         min-height: 100vh; padding: 28px 18px; }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: .02em; margin-bottom: 4px; }
+  .sub { color: #6b7594; font-size: 13px; margin-bottom: 22px; }
+  .empty { color: #556; font-size: 14px; padding: 40px 0; text-align: center; }
+  .card { background: rgba(20,26,42,0.7); border: 1px solid rgba(120,140,200,0.18);
+          border-radius: 14px; padding: 16px 18px; margin: 0 auto 14px; max-width: 720px; }
+  .card h2 { font-size: 16px; font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
+  .slug { font-family: ui-monospace, monospace; font-size: 12px; color: #2af5ff; }
+  .spec { color: #9fb0d8; font-size: 12.5px; margin: 2px 0 10px; }
+  .prompt { white-space: pre-wrap; background: rgba(0,0,0,0.35); border-radius: 8px; padding: 10px 12px;
+            font-size: 12.5px; line-height: 1.5; max-height: 220px; overflow: auto; color: #cfd8ee; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .pill { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(42,245,255,0.1);
+          border: 1px solid rgba(42,245,255,0.25); color: #8fe6ff; border-radius: 999px; padding: 2px 9px; }
+  .wish { color: #ffb84d; border-color: rgba(255,184,77,0.3); background: rgba(255,184,77,0.08); }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  input[type=text] { flex: 1; background: #0d0d18; border: 1px solid #23233a; border-radius: 9px;
+                     color: #e2e8f5; padding: 8px 11px; font-size: 13px; font-family: inherit; outline: none; }
+  button { border-radius: 9px; padding: 8px 16px; font-size: 13px; cursor: pointer; border: 1px solid transparent;
+           font-family: inherit; }
+  .approve { background: rgba(51,224,160,0.16); border-color: rgba(51,224,160,0.4); color: #7fe8bf; }
+  .reject { background: transparent; border-color: rgba(255,95,122,0.35); color: #ff9db0; }
+  .label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: #667; margin: 10px 0 4px; }
+</style>
+</head>
+<body>
+<script>
+(function(){ try {
+  const u = new URL(location.href); const q = u.searchParams.get('token');
+  if (q){ localStorage.setItem('trillion_token', q); u.searchParams.delete('token'); history.replaceState({}, '', u.toString()); }
+  const tk = localStorage.getItem('trillion_token');
+  if (tk){ const _f = window.fetch; window.fetch = (url, o) => { o = o || {}; o.headers = Object.assign({}, o.headers, { Authorization: 'Bearer ' + tk }); return _f(url, o); }; }
+} catch(e){} })();
+</script>
+
+<h1>Agent Factory</h1>
+<div class="sub">Sub-agents awaiting your approval. Approving one registers it live — no restart.</div>
+<div id="list"><div class="empty">Loading…</div></div>
+
+<script>
+const listEl = document.getElementById('list');
+
+function esc(s){ return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async function load(){
+  let pending = [];
+  try { pending = (await (await fetch('/factory/pending')).json()).pending || []; }
+  catch(e){ listEl.innerHTML = '<div class="empty">Could not reach the server.</div>'; return; }
+  if (!pending.length){ listEl.innerHTML = '<div class="empty">Nothing awaiting approval. Ask Trillion to “spawn an agent that…”.</div>'; return; }
+  // newest first
+  pending.sort((a,b) => (b.created_at||0) - (a.created_at||0));
+  listEl.innerHTML = pending.map(card).join('');
+}
+
+function card(t){
+  const m = t.proposed_manifest || {};
+  const tools = (m.tool_allowlist||[]).map(x => `<span class="pill">${esc(x)}</span>`).join('') || '<span class="spec">no tools</span>';
+  const wish = (m.tools_wishlist||[]).map(w => `<span class="pill wish">${esc(w.name)}</span>`).join('');
+  return `<div class="card" data-id="${t.id}">
+    <h2>${esc(m.name||t.name_hint)} <span class="slug">dispatch_to_${esc(m.slug||'')}</span></h2>
+    <div class="spec">${esc(m.specialty||'')}${t.approval_iterations ? ' · revision '+t.approval_iterations : ''}</div>
+    <div class="label">System prompt</div>
+    <div class="prompt">${esc(m.system_prompt||'')}</div>
+    <div class="label">Granted tools</div><div class="row">${tools}</div>
+    ${wish ? `<div class="label">Wishlist (build next)</div><div class="row">${wish}</div>` : ''}
+    <div class="actions">
+      <input type="text" placeholder="reject with feedback (optional)" id="fb-${t.id}">
+      <button class="reject" onclick="act('${t.id}','reject')">Reject</button>
+      <button class="approve" onclick="act('${t.id}','approve')">Approve</button>
+    </div>
+  </div>`;
+}
+
+async function act(id, kind){
+  const body = { task_id: id };
+  if (kind === 'reject'){ const fb = document.getElementById('fb-'+id); body.feedback = fb ? fb.value : ''; }
+  try { await fetch('/factory/'+kind, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
+  catch(e){}
+  setTimeout(load, 400);  // reject-with-feedback regenerates; give it a beat
+}
+
+load();
+setInterval(load, 8000);  // light poll so finished pipelines appear
+</script>
+</body>
+</html>

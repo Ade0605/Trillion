@@ -1,0 +1,14 @@
+{
+  "name": "Trillion",
+  "short_name": "Trillion",
+  "description": "Voice-first AI assistant",
+  "start_url": "/phone",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06060a",
+  "theme_color": "#06060a",
+  "icons": [
+    { "src": "/phone-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

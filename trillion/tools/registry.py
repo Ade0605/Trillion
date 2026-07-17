@@ -53,8 +53,31 @@ class ToolRegistry:
             for t in self._tools.values()
         ]
 
-    def run(self, name: str, inputs: dict) -> str:
+    def needs_confirmation(self, name: str) -> bool:
+        tool = self._tools.get(name)
+        return bool(tool and tool.requires_confirmation)
+
+    def run(self, name: str, inputs: dict, skip_confirm: bool = False) -> str:
         from trillion import audit
+
+        # Kill switch: halt every tool call mid-incident (no restart needed).
+        try:
+            from trillion.security import kill_switch
+            if kill_switch.is_active():
+                audit.log("kill_switch_block", tool=name)
+                return kill_switch.blocked_response(name)
+        except Exception:
+            pass
+
+        # Anomaly cap: block a runaway loop before it lands its 50th call.
+        try:
+            from trillion.security import anomaly
+            allowed, info = anomaly.check_and_record(name)
+            if not allowed:
+                audit.log("anomaly_gate_blocked", **info)
+                return anomaly.blocked_message(info)
+        except Exception:
+            pass
 
         tool = self._tools.get(name)
         if tool is None:
@@ -63,7 +86,7 @@ class ToolRegistry:
             return msg
 
         confirmed: bool | None = None
-        if tool.requires_confirmation:
+        if tool.requires_confirmation and not skip_confirm:
             confirmed = self._confirm(name, inputs)
             audit.log_confirmation(name, confirmed)
             if not confirmed:
@@ -107,4 +130,14 @@ def build_registry() -> ToolRegistry:
     register_notes(r)
     register_draft(r)
     register_web_search(r)
+    try:
+        from trillion.design.tool import register_design_tools
+        register_design_tools(r)
+    except Exception:
+        pass  # design agent optional; never break core tools
+    try:
+        from trillion.factory.tool import register_factory_tools
+        register_factory_tools(r)
+    except Exception:
+        pass  # agent factory optional; never break core tools
     return r

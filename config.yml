@@ -35,9 +35,18 @@ quiet_hours:
   start: "22:00"
   end: "07:00"
 
-# ElevenLabs voice ID (calm, neutral, mid-range)
-elevenlabs_voice_id: EXAVITQu4vr4xnSDxMaL  # "Bella" — calm & neutral; change to any ElevenLabs voice ID
+# ElevenLabs voice ID
+# Jessica — female, playful, bright, warm (premade; works on the free API tier).
+# To use Lauren (DODLEQrClDo8wCz460ld) or other "professional" voices, upgrade to a paid ElevenLabs plan.
+elevenlabs_voice_id: cgSgspJ2msm6clMCkdW9
 elevenlabs_model: eleven_turbo_v2_5
 
 # Push-to-talk key (Tier 3)
 push_to_talk_key: space
+
+# Self-knowledge: inject an auto-generated, code-grounded self-description into
+# the system prompt so Trillion doesn't invent or deny its own capabilities.
+# Regenerate the doc with: python -m trillion.self_knowledge --refresh
+self_knowledge:
+  enabled: true
+  mode: slim   # slim (compact summary, default) | full (whole doc) | off

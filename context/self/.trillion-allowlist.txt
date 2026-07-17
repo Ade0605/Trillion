@@ -1,0 +1,6 @@
+# References the drift checker should ignore (one per line).
+# Use for future-tense mentions, third-party examples, or intentional aliases.
+# Lines starting with # are comments.
+
+# Web routes referenced in prose (not files on disk):
+/speak

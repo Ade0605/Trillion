@@ -20,15 +20,23 @@ _session_output_tokens = 0
 
 
 def log(event_type: str, **kwargs) -> None:
-    """Append one entry to the audit log."""
+    """Append one entry to the audit log, with secret shapes masked."""
     _LOG.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "ts": datetime.now().isoformat(),
         "event": event_type,
         **kwargs,
     }
+    line = json.dumps(entry)
+    # Mask any secret / high-precision shapes (keys, tokens, emails, cards, DSNs)
+    # anywhere in the serialized entry before it touches disk.
+    try:
+        from trillion.security.log_redact import mask
+        line = mask(line)
+    except Exception:
+        pass
     with open(_LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+        f.write(line + "\n")
 
 
 def log_tool(name: str, inputs: dict, result_summary: str, confirmed: bool | None = None) -> None:

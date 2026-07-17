@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 5% 4%;
+    --foreground: 240 6% 93%;
+    --primary: 31 71% 64%;
+    --primary-foreground: 240 5% 4%;
+    --muted: 240 6% 10%;
+    --muted-foreground: 240 6% 93%;
+    --border: 240 5% 16%;
+    --input: 240 5% 16%;
+    --ring: 31 71% 64%;
+    --radius: 0.5rem;
+  }
+  * { border-color: hsl(var(--border)); }
+  body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
+}

@@ -60,6 +60,14 @@ class Heartbeat:
             self._stop_event.wait(timeout=30)  # check every 30 seconds
 
     def _tick(self) -> None:
+        # Kill switch halts proactive behavior too.
+        try:
+            from trillion.security import kill_switch
+            if kill_switch.is_active():
+                return
+        except Exception:
+            pass
+
         cfg = self._load_config()
         hb_cfg = cfg.get("heartbeat", {})
         if not hb_cfg.get("enabled", True):

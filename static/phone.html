@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trillion">
+<meta name="theme-color" content="#06060a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/phone-icon.svg">
+<title>Trillion</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #06060a; overscroll-behavior: none;
+               font-family: -apple-system, "Segoe UI", sans-serif; user-select: none; -webkit-user-select: none; }
+  #orbCanvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; z-index: 1; touch-action: none; }
+  #status { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 14px); left: 16px; z-index: 5;
+            display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .12em;
+            text-transform: uppercase; color: #7fb8c8; }
+  #status .dot { width: 8px; height: 8px; border-radius: 50%; background: #2af5ff; box-shadow: 0 0 10px #2af5ff; transition: background .3s, box-shadow .3s; }
+  #chip { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 48px); right: 12px; z-index: 6;
+          padding: 7px 13px; border-radius: 999px; background: rgba(20,30,40,0.72);
+          backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%);
+          font-size: 12px; color: #cfe6ee; transform: translateX(calc(100% + 16px)); opacity: 0;
+          transition: transform .34s cubic-bezier(.22,1,.36,1), opacity .28s ease; max-width: 78vw; white-space: nowrap;
+          overflow: hidden; text-overflow: ellipsis; border: 1px solid rgba(42,245,255,0.18); }
+  #chip.visible { opacity: 1; transform: translateX(0); }
+  #chip.success { color: #9be8b8; border-color: rgba(80,220,150,0.35); }
+  #chip.error { color: #ff9db0; border-color: rgba(255,95,122,0.35); }
+  #chip.confirm { color: #ffcf8a; border-color: rgba(255,184,77,0.5); background: rgba(40,30,14,0.8); }
+  #subtitle { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); transform: translateX(-50%);
+              z-index: 5; width: min(560px, 88vw); text-align: center; color: #e2ecfa; font-size: 16px; line-height: 1.5;
+              text-shadow: 0 1px 14px rgba(0,0,0,0.9); opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #subtitle.you { color: #8fb8ff; font-size: 14px; }
+  #hint { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 34px); transform: translateX(-50%);
+          z-index: 5; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: #2af5ff66; pointer-events: none; }
+</style>
+</head>
+<body>
+<!-- Primed silent WAV so the first play() happens synchronously inside the tap
+     gesture; grants the element permanent user-activation for the page. -->
+<audio id="tts" playsinline preload="auto"
+       src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA=="></audio>
+
+<canvas id="orbCanvas"></canvas>
+<div id="status"><span class="dot"></span><span id="statusText">tap to talk</span></div>
+<div id="chip"></div>
+<div id="subtitle"></div>
+<div id="hint">tap the orb</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ── token bootstrap (inert in localhost mode) ── */
+let TOKEN = '';
+(function(){
+  try {
+    const u = new URL(location.href);
+    const q = u.searchParams.get('token');
+    if (q){ localStorage.setItem('trillion_token', q); u.searchParams.delete('token'); history.replaceState({}, '', u.toString()); }
+    TOKEN = localStorage.getItem('trillion_token') || '';
+    // Always wrap fetch: attach the token (if any) and ngrok's skip header so
+    // free-tier ngrok doesn't serve its "Visit Site" interstitial to API calls.
+    const _f = window.fetch;
+    window.fetch = (url, opt) => {
+      opt = opt || {};
+      const h = { 'ngrok-skip-browser-warning': 'true' };
+      if (TOKEN) h.Authorization = 'Bearer ' + TOKEN;
+      opt.headers = Object.assign({}, opt.headers, h);
+      return _f(url, opt);
+    };
+  } catch(e){}
+})();
+let tokenQS = TOKEN ? ('?token=' + encodeURIComponent(TOKEN)) : '';
+/* Recovery path when a device has no/stale token: paste it once, cached for good. */
+function promptForToken(){
+  const t = (window.prompt('Paste your Trillion access token:') || '').trim();
+  if (!t) return;
+  TOKEN = t; localStorage.setItem('trillion_token', t);
+  tokenQS = '?token=' + encodeURIComponent(t);
+  showSubtitle('Signed in. Tap to talk.', 'trillion'); setStatus('idle');
+}
+
+/* register the pass-through service worker (makes the PWA installable) */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+
+/* ── UI helpers ── */
+const statusText = document.getElementById('statusText');
+const statusDot = document.querySelector('#status .dot');
+const chip = document.getElementById('chip');
+const subtitle = document.getElementById('subtitle');
+const hint = document.getElementById('hint');
+const audio = document.getElementById('tts');
+
+const STATE_COLOR = { idle:'#2af5ff', listening:'#ffb020', processing:'#2af5ff', speaking:'#2af5ff', error:'#ff3344' };
+let state = 'idle';
+function setStatus(s, label){
+  state = s;
+  statusDot.style.background = STATE_COLOR[s] || '#2af5ff';
+  statusDot.style.boxShadow = '0 0 10px ' + (STATE_COLOR[s] || '#2af5ff');
+  statusText.textContent = label || ({ idle:'tap to talk', listening:'listening…', processing:'thinking…', speaking:'speaking…', error:'error' }[s]);
+  hint.style.opacity = s === 'idle' ? '1' : '0';
+}
+function showSubtitle(text, who){
+  subtitle.textContent = text;
+  subtitle.className = who === 'you' ? 'you' : '';
+  subtitle.style.opacity = text ? '1' : '0';
+}
+let chipTimer = null;
+const TOOL_ICON = { web_search:'🔍', add_reminder:'⏰', list_reminders:'⏰', complete_reminder:'⏰', delete_reminder:'🗑', draft_message:'✉️', search_notes:'📖', list_notes:'📖', read_note:'📖', remember_fact:'🧠', update_memory:'🧠', forget_fact:'🧠', list_memories:'🧠' };
+function showChip(text, kind){
+  clearTimeout(chipTimer);
+  chip.textContent = text;
+  chip.className = 'visible' + (kind ? ' ' + kind : '');
+  if (kind !== 'confirm'){ chipTimer = setTimeout(()=>{ chip.className = chip.className.replace('visible','').trim(); }, 3200); }
+}
+function hideChip(){ clearTimeout(chipTimer); chip.className = chip.className.replace('visible','').trim(); }
+
+/* ── audio: dual-path (audible <audio> + analyser buffer source) ── */
+let audioCtx = null, analyser = null, freqData = null;
+function ensureAudioPrepared(){
+  if (!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  // Prime the <audio> element inside the gesture so later play()s after awaits work.
+  audio.play().then(()=>audio.pause()).catch(()=>{});
+}
+function audioLevel(){
+  if (!analyser) return 0;
+  analyser.getByteFrequencyData(freqData);
+  let sum = 0; for (let i=0;i<freqData.length;i++) sum += freqData[i];
+  return Math.min((sum / freqData.length) / 128, 1);
+}
+
+async function speak(turnId, continuous){
+  setStatus('speaking');
+  // Audible path — <audio>, ignores the iOS silent switch.
+  audio.src = '/api/tts/' + turnId + tokenQS;
+  audio.play().catch(()=>{});
+  // Analysis path — decode a CLONE of the bytes into a buffer source feeding the
+  // analyser (iOS MediaElementSource+analyser returns zeros, so we branch).
+  try {
+    const bytes = await (await fetch('/api/tts/' + turnId)).arrayBuffer();
+    const buf = await audioCtx.decodeAudioData(bytes.slice(0));
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.connect(analyser); src.start();  // no destination → silent, analyser only
+  } catch(e){}
+  audio.onended = () => {
+    orbLevel = 0;
+    if (continuous && state === 'speaking') startListening();
+    else setStatus('idle');
+  };
+}
+
+/* ── mic capture + client-side silence detection ── */
+let mediaRecorder = null, micStream = null, micCtx = null, micAnalyser = null, recChunks = [], vadTimer = null, recMime = 'audio/webm';
+function pickMime(){
+  for (const m of ['audio/mp4','audio/webm;codecs=opus','audio/webm']) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return '';
+}
+async function startListening(){
+  hideChip();
+  setStatus('listening');
+  showSubtitle('', 'you');
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true } });
+  } catch(e){ setStatus('error', 'mic blocked'); setTimeout(()=>setStatus('idle'), 1800); return; }
+  recMime = pickMime();
+  recChunks = [];
+  mediaRecorder = recMime ? new MediaRecorder(micStream, { mimeType: recMime }) : new MediaRecorder(micStream);
+  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  mediaRecorder.onstop = onRecordingStop;
+  mediaRecorder.start();
+
+  // simple VAD: watch mic energy; stop after ~1.2s of silence following speech
+  micCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+  const srcNode = micCtx.createMediaStreamSource(micStream);
+  micAnalyser = micCtx.createAnalyser(); micAnalyser.fftSize = 512;
+  srcNode.connect(micAnalyser);
+  const data = new Uint8Array(micAnalyser.frequencyBinCount);
+  let spoke = false, silentFor = 0, t0 = performance.now(), last = t0;
+  (function loop(){
+    if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+    micAnalyser.getByteFrequencyData(data);
+    let sum = 0; for (let i=0;i<data.length;i++) sum += data[i];
+    const level = sum / data.length;
+    orbLevel = Math.min(level/90, 1);
+    const now = performance.now(); const dt = now - last; last = now;
+    if (level > 16){ spoke = true; silentFor = 0; }
+    else if (spoke){ silentFor += dt; }
+    // stop on trailing silence, or hard cap at 15s
+    if ((spoke && silentFor > 1200) || (now - t0 > 15000)) { stopListening(); return; }
+    requestAnimationFrame(loop);
+  })();
+}
+function stopListening(){
+  if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
+  orbLevel = 0;
+}
+async function onRecordingStop(){
+  setStatus('processing');
+  const blob = new Blob(recChunks, { type: recMime || 'audio/webm' });
+  if (blob.size < 800){ setStatus('idle'); return; }  // too short — probably no speech
+  let text = '';
+  try {
+    const r = await fetch('/transcribe', { method:'POST', headers:{ 'Content-Type': recMime || 'audio/webm' }, body: blob });
+    const j = await r.json();
+    text = (j.text || '').trim();
+  } catch(e){}
+  if (!text){ setStatus('idle'); return; }
+  showSubtitle(text, 'you');
+  await askChat(text);
+}
+
+/* ── conversation turn over the existing /chat SSE ── */
+let lastTurnId = null;
+async function askChat(text){
+  setStatus('processing');
+  let reply = '', signoff = false; lastTurnId = null;
+  try {
+    const resp = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: text }) });
+    if (resp.status === 401){ setStatus('error','not signed in'); showSubtitle('Not signed in — this device is missing its access token. Tap OK to paste it.', 'trillion'); promptForToken(); return; }
+    if (!resp.ok){ setStatus('error'); showSubtitle('Server error ('+resp.status+'). Is Trillion running?', 'trillion'); return; }
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    outer: while (true){
+      const { done, value } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream:true }); const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines){
+        if (!line.startsWith('data: ')) continue;
+        const p = line.slice(6); if (p === '[DONE]') break outer;
+        try {
+          const o = JSON.parse(p);
+          if (o.signoff){ signoff = true; break outer; }
+          if (o.confirm){ showChip('⚠ Confirm: ' + o.confirm.name.replace(/_/g,' '), 'confirm'); pendingConfirm = o.confirm; continue; }
+          if (o.tool){ showChip((TOOL_ICON[o.tool]||'⚙') + ' ' + o.tool.replace(/_/g,' '), null); continue; }
+          if (o.turn_id){ lastTurnId = o.turn_id; continue; }
+          if (o.chunk != null){ reply += o.chunk; showSubtitle(reply, 'trillion'); }
+        } catch(e){}
+      }
+    }
+  } catch(e){ showSubtitle('Connection error.', 'trillion'); }
+  if (signoff){ setStatus('idle'); showSubtitle('', 'trillion'); return; }
+  if (lastTurnId) speak(lastTurnId, true);
+  else setStatus('idle');
+}
+
+/* ── confirmation: tap during a confirm chip cancels; tap otherwise = talk ── */
+let pendingConfirm = null;
+function onTap(){
+  ensureAudioPrepared();
+  if (pendingConfirm){
+    // The confirm proposal is spoken; the user says "yes"/"no" in the next turn.
+    // A tap here is an explicit cancel.
+    pendingConfirm = null; hideChip();
+    fetch('/confirm', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ approved: false }) }).catch(()=>{});
+    setStatus('idle');
+    return;
+  }
+  if (state === 'speaking'){ audio.pause(); audio.onended = null; orbLevel = 0; startListening(); return; }
+  if (state === 'listening'){ stopListening(); return; }
+  if (state === 'processing') return;
+  startListening();
+}
+document.getElementById('orbCanvas').addEventListener('click', onTap);
+
+/* ── the orb (compact voice-reactive) ── */
+let orbLevel = 0;
+const NOISE = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){const vec2 C=vec2(1.0/6.0,1.0/3.0);const vec4 D=vec4(0.0,0.5,1.0,2.0);
+vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.0-g;
+vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;
+i=mod289(i);vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+float n_=0.142857142857;vec3 ns=n_*D.wyz-D.xzx;vec4 j=p-49.0*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.0*x_);
+vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.0-abs(x)-abs(y);vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);
+vec4 s0=floor(b0)*2.0+1.0;vec4 s1=floor(b1)*2.0+1.0;vec4 sh=-step(h,vec4(0.0));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);
+vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);m=m*m;
+return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}
+float fbm(vec3 p){float s=0.0,a=0.5;for(int i=0;i<4;i++){s+=a*snoise(p);p*=2.02;a*=0.5;}return s;}`;
+
+const canvas = document.getElementById('orbCanvas');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+camera.position.z = 4.2;
+const uni = { uTime:{value:0}, uColor:{value:new THREE.Color(0x2af5ff)}, uAmp:{value:0.10}, uChurn:{value:0.6}, uLevel:{value:0}, uBright:{value:0.8} };
+const mat = new THREE.ShaderMaterial({ uniforms:uni, wireframe:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: NOISE + `uniform float uTime,uAmp,uChurn,uLevel;varying float vF;void main(){vec3 p=position;
+    float n=fbm(normalize(position)*1.7+vec3(0.0,uTime*0.18*uChurn,uTime*0.07*uChurn));p+=normal*n*(uAmp+uLevel*0.32);p*=1.0+uLevel*0.05;
+    vec4 mv=modelViewMatrix*vec4(p,1.0);vec3 vn=normalize(normalMatrix*normal);vec3 vd=normalize(-mv.xyz);vF=pow(1.0-max(dot(vn,vd),0.0),1.9);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader: `uniform vec3 uColor;uniform float uBright;varying float vF;void main(){vec3 c=uColor*(0.25+1.35*vF)*uBright;gl_FragColor=vec4(c,0.30+0.70*vF);}` });
+const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 5), mat);
+scene.add(orb);
+function makeHalo(){ const s=256,c=document.createElement('canvas');c.width=c.height=s;const g=c.getContext('2d');
+  const gr=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);gr.addColorStop(0,'rgba(255,255,255,0.85)');gr.addColorStop(0.2,'rgba(255,255,255,0.3)');gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=gr;g.fillRect(0,0,s,s);return new THREE.CanvasTexture(c); }
+const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:makeHalo(), color:new THREE.Color(0x2af5ff), transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, opacity:0.4 }));
+halo.scale.set(4.4,4.4,1); scene.add(halo);
+
+const TARGET = {
+  idle:      { color:0x145863, amp:0.09, churn:0.55, bright:0.65, halo:0.28 },
+  listening: { color:0xffb020, amp:0.15, churn:1.0,  bright:1.3,  halo:0.75 },
+  processing:{ color:0x2af5ff, amp:0.13, churn:1.9,  bright:0.95, halo:0.5 },
+  speaking:  { color:0x2af5ff, amp:0.18, churn:1.35, bright:1.4,  halo:0.7 },
+  error:     { color:0xff3344, amp:0.04, churn:0.2,  bright:1.1,  halo:0.5 },
+};
+const cur = { amp:0.09, churn:0.55, bright:0.65, halo:0.28, color:new THREE.Color(0x145863) };
+let smoothLevel = 0;
+const clock = new THREE.Clock();
+function resize(){ const w=canvas.clientWidth, h=canvas.clientHeight; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+window.addEventListener('resize', resize);
+function frame(){
+  requestAnimationFrame(frame);
+  const t = clock.getElapsedTime();
+  const tg = TARGET[state] || TARGET.idle;
+  const k = 0.06;
+  cur.amp += (tg.amp-cur.amp)*k; cur.churn += (tg.churn-cur.churn)*k; cur.bright += (tg.bright-cur.bright)*k; cur.halo += (tg.halo-cur.halo)*k;
+  cur.color.lerp(new THREE.Color(tg.color), k);
+  // audio level: real analyser when speaking, mic level when listening (orbLevel), asymmetric smoothing
+  let lv = state === 'speaking' ? audioLevel() : (state === 'listening' ? orbLevel : 0);
+  smoothLevel += (lv > smoothLevel ? 0.4 : 0.08) * (lv - smoothLevel);
+  uni.uTime.value = t; uni.uAmp.value = cur.amp; uni.uChurn.value = cur.churn; uni.uBright.value = cur.bright;
+  uni.uColor.value.copy(cur.color); uni.uLevel.value = smoothLevel;
+  halo.material.color.copy(cur.color); halo.material.opacity = cur.halo + smoothLevel*0.25;
+  orb.rotation.y = t*0.16; orb.rotation.x = Math.sin(t*0.12)*0.18;
+  renderer.render(scene, camera);
+}
+resize(); frame(); setStatus('idle');
+</script>
+</body>
+</html>

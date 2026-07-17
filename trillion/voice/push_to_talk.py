@@ -1,17 +1,20 @@
 """
 Push-to-talk capture loop.
+Uses soundcard (WASAPI) for mic recording — no PortAudio dependency.
 Hold the configured key to record, release to transcribe and respond.
-If a new keypress arrives while TTS is playing, playback stops immediately.
 """
 from __future__ import annotations
 
 import io
 import threading
+import warnings
 import wave
 from pathlib import Path
 from typing import Callable
 
 import yaml
+
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="soundcard")
 
 _ROOT = Path(__file__).parent.parent.parent
 
@@ -24,20 +27,18 @@ def _load_config() -> dict:
 def run_push_to_talk(
     on_transcript: Callable[[str], None],
     sample_rate: int = 16000,
-    channels: int = 1,
 ) -> None:
     """
     Block and run the push-to-talk loop.
-
-    on_transcript(text) is called with the transcribed text after each recording.
-    The caller is responsible for running agent.run_turn and tts.speak.
+    on_transcript(text) is called after each recording is transcribed.
     """
     try:
-        import sounddevice as sd
+        import soundcard as sc
+        import numpy as np
         from pynput import keyboard as kb
     except ImportError as e:
         print(f"[PTT] Missing dependency: {e}")
-        print("Install: pip install sounddevice pynput numpy")
+        print("Install: pip install soundcard pynput numpy")
         return
 
     from . import stt, tts
@@ -47,64 +48,73 @@ def run_push_to_talk(
     key_obj = kb.Key.space if ptt_key == "space" else kb.KeyCode.from_char(ptt_key)
 
     recording = threading.Event()
-    audio_buffer: list[bytes] = []
+    audio_frames: list[bytes] = []
     lock = threading.Lock()
-
-    def audio_callback(indata, frames, time_info, status):
-        if recording.is_set():
-            with lock:
-                audio_buffer.append(bytes(indata))
+    mic = sc.default_microphone()
 
     print(f"\n[Trillion Voice] Hold [{ptt_key.upper()}] to speak. Ctrl-C to quit.\n")
 
-    with sd.RawInputStream(
-        samplerate=sample_rate,
-        channels=channels,
-        dtype="int16",
-        callback=audio_callback,
-    ):
-        def on_press(key):
-            if key == key_obj:
-                tts.stop()  # interrupt any ongoing playback
-                with lock:
-                    audio_buffer.clear()
-                recording.set()
-                print("[listening...]", end=" ", flush=True)
+    def record_loop() -> None:
+        """Continuously capture mic; only keep frames while recording flag is set."""
+        blocksize = int(sample_rate * 0.05)  # 50ms blocks
+        with mic.recorder(samplerate=sample_rate, channels=1, blocksize=blocksize) as rec:
+            while True:
+                data = rec.record(numframes=blocksize)
+                if recording.is_set():
+                    # Convert float32 → int16 PCM bytes
+                    pcm = (data[:, 0] * 32767).astype("int16").tobytes()
+                    with lock:
+                        audio_frames.append(pcm)
 
-        def on_release(key):
-            if key == key_obj:
-                recording.clear()
-                with lock:
-                    captured = b"".join(audio_buffer)
-                    audio_buffer.clear()
+    recorder_thread = threading.Thread(target=record_loop, daemon=True)
+    recorder_thread.start()
 
-                if not captured:
-                    return
+    def on_press(key) -> None:
+        if key == key_obj:
+            tts.stop()
+            with lock:
+                audio_frames.clear()
+            recording.set()
+            print("[listening...]", end=" ", flush=True)
 
-                wav_bytes = _to_wav(captured, sample_rate, channels)
-                print("[transcribing...]", flush=True)
-                transcript = stt.transcribe(wav_bytes)
+    def on_release(key) -> None:
+        if key == key_obj:
+            recording.clear()
+            with lock:
+                captured = b"".join(audio_frames)
+                audio_frames.clear()
 
-                if transcript.startswith("[STT error]"):
-                    print(transcript)
-                    return
+            if not captured:
+                return
 
-                print(f"[heard]: {transcript}")
-                on_transcript(transcript)
+            wav_bytes = _to_wav(captured, sample_rate)
+            print("[transcribing...]", flush=True)
+            transcript = stt.transcribe(wav_bytes)
 
-        listener = kb.Listener(on_press=on_press, on_release=on_release)
-        listener.start()
-        try:
-            listener.join()
-        except KeyboardInterrupt:
-            listener.stop()
+            if transcript.startswith("[STT error]"):
+                print(transcript)
+                return
+
+            if not transcript.strip():
+                print("[heard nothing — try again]")
+                return
+
+            print(f"[heard]: {transcript}")
+            on_transcript(transcript)
+
+    listener = kb.Listener(on_press=on_press, on_release=on_release)
+    listener.start()
+    try:
+        listener.join()
+    except KeyboardInterrupt:
+        listener.stop()
 
 
-def _to_wav(pcm_bytes: bytes, sample_rate: int, channels: int) -> bytes:
+def _to_wav(pcm_bytes: bytes, sample_rate: int) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
-        wf.setnchannels(channels)
-        wf.setsampwidth(2)  # int16 = 2 bytes
+        wf.setnchannels(1)
+        wf.setsampwidth(2)  # int16
         wf.setframerate(sample_rate)
         wf.writeframes(pcm_bytes)
     return buf.getvalue()

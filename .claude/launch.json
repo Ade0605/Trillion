@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cosmos-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["web_server.py"],
+      "port": 7777,
+      "autoPort": false
+    }
+  ]
+}

@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trillion — Cosmos</title>
+<style>
+  :root{ --accent:#2af5ff; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:#04040a; color:#dfefff;
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+  #bg-canvas,#orb-canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+  #bg-canvas{ z-index:0; }
+  #orb-canvas{ z-index:1; }
+  /* Front label layer */
+  #labels{ position:fixed; inset:0; z-index:2; pointer-events:none; overflow:hidden; }
+  .agent-label{ position:absolute; transform:translate(-50%,0); text-align:center; white-space:nowrap;
+    opacity:0; transition:opacity .25s ease; pointer-events:none; will-change:transform,opacity; }
+  .agent-label .nm{ font-size:13px; font-weight:600; letter-spacing:.02em; color:#eaf7ff;
+    text-shadow:0 0 10px rgba(0,0,0,.9); }
+  .agent-label .sp{ font-size:10.5px; color:#8fb6c9; margin-top:1px; text-shadow:0 0 8px rgba(0,0,0,.9); }
+  .agent-label.busy .nm{ color:#fff; }
+  /* HUD */
+  #hud{ position:fixed; top:14px; left:16px; z-index:3; display:flex; align-items:center; gap:10px;
+    font-size:12px; color:#9fc4d6; pointer-events:none; }
+  #hud .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 12px var(--accent); transition:background .5s,box-shadow .5s; }
+  #brand{ font-weight:700; letter-spacing:.06em; color:#eaf7ff; }
+  #state-text{ opacity:.75; }
+  #controls{ position:fixed; top:12px; right:14px; z-index:3; display:flex; gap:8px; }
+  #controls button{ pointer-events:auto; background:#0c1420cc; border:1px solid #234;
+    color:#9fc4d6; font-size:11px; padding:6px 10px; border-radius:20px; cursor:pointer; backdrop-filter:blur(6px); }
+  #controls button:hover{ border-color:var(--accent); color:#eaf7ff; }
+  #controls button.on{ border-color:var(--accent); color:var(--accent); }
+  /* Dock bar (docking targets for working agents) */
+  #dock{ position:fixed; bottom:78px; left:50%; transform:translateX(-50%); z-index:3;
+    display:flex; gap:14px; pointer-events:none; }
+  .dock-slot{ width:56px; height:56px; border-radius:14px; border:1px dashed #1d2b3a;
+    display:flex; align-items:center; justify-content:center; font-size:10px; color:#4a6577;
+    background:#0a121cAA; opacity:.0; transition:opacity .4s, border-color .4s; }
+  .dock-slot.active{ opacity:1; border-color:currentColor; }
+  /* Composer */
+  #composer{ position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:4;
+    width:min(680px,92vw); display:flex; gap:8px; align-items:flex-end;
+    background:#0a1119cc; border:1px solid #1b2a38; border-radius:16px; padding:8px;
+    backdrop-filter:blur(10px); }
+  #composer textarea{ flex:1; resize:none; background:transparent; border:0; outline:0; color:#eaf7ff;
+    font-size:15px; line-height:1.4; max-height:120px; font-family:inherit; }
+  #composer textarea::placeholder{ color:#5b7688; }
+  .cbtn{ background:transparent; border:1px solid #24384a; color:#9fc4d6; width:40px; height:40px;
+    border-radius:12px; cursor:pointer; font-size:17px; display:flex; align-items:center; justify-content:center; }
+  .cbtn:hover{ border-color:var(--accent); color:#eaf7ff; }
+  .cbtn.listening{ border-color:#ffb020; color:#ffb020; }
+  #subtitle{ position:fixed; left:50%; bottom:150px; transform:translateX(-50%); z-index:3;
+    width:min(680px,90vw); text-align:center; font-size:15px; line-height:1.5; color:#cfe6f2;
+    text-shadow:0 0 14px rgba(0,0,0,.8); pointer-events:none; min-height:1.5em; opacity:.95; }
+  @media (max-width:760px){ #labels,#dock{ display:none; } #subtitle{ bottom:130px; } }
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<canvas id="orb-canvas"></canvas>
+<div id="labels"></div>
+<div id="hud"><span class="dot" id="hud-dot"></span><span id="brand">TRILLION</span><span id="state-text">idle</span></div>
+<div id="controls">
+  <button id="perf-btn" title="Performance mode">perf</button>
+</div>
+<div id="dock"></div>
+<div id="subtitle"></div>
+<div id="composer">
+  <textarea id="input" rows="1" placeholder="Talk to Trillion…"></textarea>
+  <button class="cbtn" id="mic-btn" title="Voice">🎤</button>
+  <button class="cbtn" id="send-btn" title="Send">➤</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   TRILLION · COSMOS — a living cosmic interface
+   Layers:  bg-canvas (nebula+network)  ·  orb-canvas (orb+constellation)  ·  #labels
+   Rule:    nothing snaps. Everything eases toward a target every frame.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── token bootstrap (so /chat works from here too; inert without a token) ── */
+let TOKEN = '';
+(function(){
+  try{
+    const u = new URL(location.href); const q = u.searchParams.get('token');
+    if(q){ localStorage.setItem('trillion_token', q); u.searchParams.delete('token'); history.replaceState({},'',u.toString()); }
+    TOKEN = localStorage.getItem('trillion_token') || '';
+    const _f = window.fetch;
+    window.fetch = (url,opt)=>{ opt=opt||{}; const h={}; if(TOKEN) h.Authorization='Bearer '+TOKEN;
+      opt.headers=Object.assign({},opt.headers,h); return _f(url,opt); };
+  }catch(e){}
+})();
+
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const IS_MOBILE = Math.min(innerWidth,innerHeight) < 760;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+
+/* GPU simplex noise (Ashima, public domain) — shared by orb + sky shaders. */
+const NOISE_GLSL = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy; i=mod289(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}`;
+
+const clock = new THREE.Clock();
+let running = true;
+
+/* ═══════════════════════ TIER 3 — states (targets the orb eases toward) ═══ */
+const STATES = {
+  idle:      { core:[0.05,0.35,0.42], rim:[0.16,0.85,0.95], bright:0.72, amp:0.10, churn:0.18, glow:0.34, halo:1.00, spin:0.20, size:1.00, rings:0.0 },
+  listening: { core:[0.55,0.32,0.04], rim:[1.00,0.72,0.20], bright:1.05, amp:0.16, churn:0.30, glow:0.62, halo:1.35, spin:0.30, size:1.05, rings:0.0 },
+  processing:{ core:[0.10,0.10,0.34], rim:[0.55,0.35,0.95], bright:0.66, amp:0.20, churn:0.85, glow:0.52, halo:1.10, spin:0.55, size:1.00, rings:1.0 },
+  speaking:  { core:[0.06,0.40,0.48], rim:[0.20,0.95,1.00], bright:1.15, amp:0.30, churn:0.55, glow:0.70, halo:1.30, spin:0.45, size:1.06, rings:0.0 },
+  error:     { core:[0.40,0.05,0.06], rim:[1.00,0.20,0.22], bright:0.85, amp:0.05, churn:0.05, glow:0.40, halo:1.05, spin:0.02, size:0.98, rings:0.0 },
+};
+let stateName = 'idle';
+const cur = JSON.parse(JSON.stringify(STATES.idle));   // eased live values
+function setState(name){
+  if(!STATES[name]) return;
+  stateName = name;
+  document.getElementById('state-text').textContent = name;
+  const c = STATES[name].rim;
+  const hex = '#'+c.map(v=>('0'+Math.round(clamp(v,0,1)*255).toString(16)).slice(-2)).join('');
+  document.documentElement.style.setProperty('--accent', hex);
+  document.getElementById('hud-dot').style.background = hex;
+  document.getElementById('hud-dot').style.boxShadow = '0 0 12px '+hex;
+}
+
+/* ═══════════════════════ TIER 3 — audio (real analyser + synthetic) ═══════ */
+const audio = {
+  ctx:null, analyser:null, data:null, el:null, hasAnalyser:false, realLevel:0,
+  loud:0, bass:0,          // asymmetrically-smoothed levels the orb reads
+  _ctx(){ if(!this.ctx) this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+    if(this.ctx.state==='suspended') this.ctx.resume(); return this.ctx; },
+  attach(mediaEl){         // tap the PLAYBACK element for levels — MUST also reach the speakers
+    try{
+      const ctx=this._ctx();
+      // createMediaElementSource is one-shot per element: only wire it up once, or a
+      // repeat call throws AND (worse) leaves the element routed to a dead-end = silent.
+      if(this.el!==mediaEl){
+        const src=ctx.createMediaElementSource(mediaEl);
+        this.analyser=ctx.createAnalyser(); this.analyser.fftSize=256;
+        this.data=new Uint8Array(this.analyser.frequencyBinCount);
+        src.connect(this.analyser);          // parallel tap for levels …
+        src.connect(ctx.destination);        // … AND to the speakers so it's audible
+        this.el=mediaEl; this.hasAnalyser=true;
+      }
+    }catch(e){ /* capture unsupported → element still plays natively; use synthetic visuals */ }
+  },
+  attachStream(stream){    // microphone path — separate context, NEVER to destination (feedback)
+    try{
+      const c=new (window.AudioContext||window.webkitAudioContext)();
+      const src=c.createMediaStreamSource(stream);
+      this.micCtx=c; this.analyser=c.createAnalyser(); this.analyser.fftSize=256;
+      this.data=new Uint8Array(this.analyser.frequencyBinCount); src.connect(this.analyser); this.hasAnalyser=true;
+    }catch(e){}
+  },
+  read(t){
+    let loud=0, bass=0, real=0;
+    if(this.hasAnalyser && this.analyser){
+      this.analyser.getByteFrequencyData(this.data);
+      let s=0; for(let i=0;i<this.data.length;i++) s+=this.data[i];
+      real = s/(this.data.length*255);
+      let b=0; for(let i=0;i<8;i++) b+=this.data[i]; bass=b/(8*255);
+      loud = real;
+    }
+    // Use real levels only while audio is actually flowing; otherwise a synthetic
+    // cadence keeps the orb alive. (No permanent disable — it re-engages each time.)
+    this.realLevel = lerp(this.realLevel, real, 0.3);
+    if(this.realLevel < 0.01){
+      const drive = stateName==='speaking'?1.0 : stateName==='listening'?0.5 : stateName==='processing'?0.35:0.12;
+      loud = drive*(0.35 + 0.35*Math.abs(Math.sin(t*6.1)) + 0.2*Math.abs(Math.sin(t*11.3+1.0)));
+      bass = drive*(0.3 + 0.3*Math.abs(Math.sin(t*3.2)));
+    }
+    this.loud = loud>this.loud ? lerp(this.loud,loud,0.6) : lerp(this.loud,loud,0.08);
+    this.bass = bass>this.bass ? lerp(this.bass,bass,0.6) : lerp(this.bass,bass,0.07);
+  }
+};
+
+/* ═══════════════════════ ORB LAYER (renderer, scene, camera) ══════════════ */
+const orbCanvas = document.getElementById('orb-canvas');
+const orbRenderer = new THREE.WebGLRenderer({ canvas:orbCanvas, alpha:true, antialias:true });
+orbRenderer.setPixelRatio(Math.min(devicePixelRatio,2));
+orbRenderer.setClearColor(0x000000,0);
+const orbScene = new THREE.Scene();
+const orbCam = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 100);
+orbCam.position.set(0,0,5.2);
+
+/* ── TIER 1 — the orb: displaced wireframe icosahedron + fresnel + glow shell ─ */
+const orbUniforms = {
+  uTime:{value:0}, uAmp:{value:0.1}, uChurn:{value:0.2}, uLoud:{value:0}, uBass:{value:0},
+  uColorCore:{value:new THREE.Color(0.05,0.35,0.42)}, uColorRim:{value:new THREE.Color(0.16,0.85,0.95)},
+  uBright:{value:0.72}, uOpacity:{value:1.0},
+};
+const orbMat = new THREE.ShaderMaterial({
+  uniforms:orbUniforms, wireframe:true, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+  vertexShader: NOISE_GLSL + `
+    uniform float uTime,uAmp,uChurn,uLoud,uBass;
+    varying float vFres; varying float vDisp;
+    void main(){
+      vec3 p=position;
+      float n = snoise(normal*1.6 + uTime*uChurn);
+      float n2= snoise(normal*3.2 - uTime*uChurn*0.7)*0.5;
+      float disp = (n+n2)*uAmp + uBass*0.35 + uLoud*0.15;
+      vDisp = disp;
+      p += normal*disp;
+      vec4 mv = modelViewMatrix*vec4(p,1.0);
+      vec3 nrm = normalize(normalMatrix*normal);
+      vec3 vd = normalize(-mv.xyz);
+      vFres = pow(1.0-abs(dot(vd,nrm)),2.0);
+      gl_Position = projectionMatrix*mv;
+    }`,
+  fragmentShader:`
+    uniform vec3 uColorCore,uColorRim; uniform float uBright,uOpacity;
+    varying float vFres; varying float vDisp;
+    void main(){
+      vec3 col = mix(uColorCore,uColorRim, clamp(vFres+0.18,0.0,1.0));
+      col += vDisp*0.35;
+      float a = (0.30 + vFres*0.95)*uOpacity;
+      gl_FragColor = vec4(col*uBright, a);
+    }`
+});
+const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15, 6), orbMat);
+orbScene.add(orb);
+
+const glowUniforms = { uColor:{value:new THREE.Color(0.16,0.85,0.95)}, uInt:{value:1.0} };
+const glowShell = new THREE.Mesh(
+  new THREE.SphereGeometry(1.7, 40, 40),
+  new THREE.ShaderMaterial({
+    uniforms:glowUniforms, transparent:true, side:THREE.BackSide, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:`varying float vF; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0);
+      vec3 n=normalize(normalMatrix*normal); vec3 vd=normalize(-mv.xyz);
+      vF=pow(1.0-abs(dot(vd,n)),3.0); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform vec3 uColor; uniform float uInt; varying float vF;
+      void main(){ gl_FragColor=vec4(uColor*uInt, vF*0.9*uInt); }`
+  })
+);
+orbScene.add(glowShell);
+
+/* ── TIER 5 — processing rings (the "helix") ──────────────────────────────── */
+const ringGroup = new THREE.Group(); orbScene.add(ringGroup);
+const rings = [];
+for(let i=0;i<4;i++){
+  const m = new THREE.Mesh(
+    new THREE.TorusGeometry(1.5 + i*0.22, 0.012, 8, 140),
+    new THREE.MeshBasicMaterial({ color:0x2af5ff, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false })
+  );
+  m.rotation.x = Math.PI*0.5 + (i-1.5)*0.4;
+  m.rotation.y = i*0.6;
+  m.userData = { spin:(i%2?1:-1)*(0.3+i*0.12), phase:i*1.7 };
+  rings.push(m); ringGroup.add(m);
+}
+let ringsEase = 0;
+
+/* pulse waves (ripple outward while thinking) */
+const waves = [];
+function spawnWave(){
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(1.25, 24, 24),
+    new THREE.MeshBasicMaterial({ color:0x7a5cff, transparent:true, opacity:0.25, blending:THREE.AdditiveBlending,
+      side:THREE.BackSide, depthWrite:false, wireframe:true })
+  );
+  m.userData={ t:0 }; waves.push(m); orbScene.add(m);
+}
+let waveTimer = 0;
+
+/* ═══════════════════════ BACKGROUND LAYER (own renderer) ══════════════════ */
+const bgCanvas = document.getElementById('bg-canvas');
+const bgRenderer = new THREE.WebGLRenderer({ canvas:bgCanvas, antialias:false });
+let perfMode = false;
+function bgPixelRatio(){ return perfMode ? Math.min(devicePixelRatio,1)*0.6 : Math.min(devicePixelRatio,1.5); }
+bgRenderer.setPixelRatio(bgPixelRatio());
+bgRenderer.autoClear = false;
+
+/* — TIER 2a: the sky (fullscreen procedural shader on an ortho quad) — */
+const skyScene = new THREE.Scene();
+const skyCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const skyUniforms = {
+  uRes:{value:new THREE.Vector2(innerWidth,innerHeight)}, uTime:{value:0}, uFade:{value:0},
+  uGlowColor:{value:new THREE.Color(0.16,0.85,0.95)}, uGlow:{value:0.34},
+};
+const skyQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMaterial({
+  uniforms:skyUniforms, depthWrite:false,
+  vertexShader:`void main(){ gl_Position=vec4(position,1.0); }`,
+  fragmentShader: NOISE_GLSL + `
+    uniform vec2 uRes; uniform float uTime,uFade,uGlow; uniform vec3 uGlowColor;
+    float fbm(vec3 p){ float a=0.5,f=0.0; for(int i=0;i<5;i++){ f+=a*snoise(p); p*=2.02; a*=0.5;} return f; }
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    float starLayer(vec2 uv,float density,float size,float tw){
+      vec2 g=uv*density; vec2 id=floor(g); vec2 f=fract(g); float h=hash(id);
+      if(h<0.965) return 0.0;
+      vec2 pos=vec2(hash(id+1.3),hash(id+2.7));
+      float d=length(f-pos); float b=smoothstep(size,0.0,d);
+      return b*(0.5+0.5*sin(uTime*tw + h*6.28));
+    }
+    void main(){
+      vec2 uv=gl_FragCoord.xy/uRes; vec2 p=(uv-0.5); p.x*=uRes.x/uRes.y;
+      float r=length(p);
+      vec3 col=vec3(0.015,0.02,0.035);
+      col += vec3(0.02,0.035,0.055)*smoothstep(0.95,0.0,r);
+      float n1=fbm(vec3(p*1.5+vec2(uTime*0.010,0.0), uTime*0.02));
+      float n2=fbm(vec3(p*2.3-vec2(0.0,uTime*0.014), 5.0+uTime*0.01));
+      float n3=fbm(vec3(p*1.05+vec2(-uTime*0.008,uTime*0.006), 9.0));
+      col += vec3(0.03,0.20,0.15)*smoothstep(0.15,0.9,n1)*0.45;
+      col += vec3(0.22,0.03,0.20)*smoothstep(0.30,0.95,n2)*0.24;
+      col += vec3(0.04,0.09,0.28)*smoothstep(0.22,0.9,n3)*0.34;
+      float aspect=uRes.x/uRes.y;
+      col += vec3(0.85,0.92,1.0)*starLayer(vec2(uv.x*aspect,uv.y),120.0,0.055,3.0);
+      col += vec3(0.95,0.97,1.0)*starLayer(vec2(uv.x*aspect,uv.y)+7.0,55.0,0.09,1.6)*1.5;
+      col += uGlowColor*uGlow*smoothstep(0.55,0.0,r)*0.7;
+      col *= smoothstep(1.25,0.35,r);
+      gl_FragColor=vec4(col*uFade,1.0);
+    }`
+}));
+skyScene.add(skyQuad);
+
+/* — TIER 2b: the distant network — clustered glowing nodes, near-lines, dust — */
+const netScene = new THREE.Scene();
+const netCam = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 1, 200);
+netCam.position.set(0,0,26);
+const netGroup = new THREE.Group(); netScene.add(netGroup);
+/* soft circular sprite for Points (PointsMaterial draws hard squares otherwise) */
+const DOT = (function(){ const s=64, cv=document.createElement('canvas'); cv.width=cv.height=s; const g=cv.getContext('2d');
+  const grd=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  grd.addColorStop(0,'rgba(255,255,255,1)'); grd.addColorStop(0.45,'rgba(255,255,255,0.55)'); grd.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=grd; g.fillRect(0,0,s,s); const t=new THREE.CanvasTexture(cv); t.needsUpdate=true; return t; })();
+(function buildNetwork(){
+  const NODES = IS_MOBILE?55:110, CLUSTERS=8, DUST=IS_MOBILE?160:340;
+  const palette=[[0.2,0.9,0.95],[0.5,0.35,0.95],[0.2,0.95,0.6],[0.95,0.4,0.8],[0.35,0.6,1.0],[0.15,0.85,0.85],[0.7,0.5,1.0],[0.3,0.9,0.8]];
+  const centers=[]; for(let i=0;i<CLUSTERS;i++) centers.push(new THREE.Vector3((Math.random()-0.5)*46,(Math.random()-0.5)*30,(Math.random()-0.5)*36));
+  const pts=[], cols=[], nodeVecs=[];
+  for(let i=0;i<NODES;i++){
+    const c=(i/Math.ceil(NODES/CLUSTERS))|0; const ctr=centers[Math.min(c,CLUSTERS-1)]; const col=palette[Math.min(c,CLUSTERS-1)];
+    const v=ctr.clone().add(new THREE.Vector3((Math.random()-0.5)*9,(Math.random()-0.5)*9,(Math.random()-0.5)*9));
+    nodeVecs.push(v); pts.push(v.x,v.y,v.z); cols.push(col[0],col[1],col[2]);
+  }
+  const ng=new THREE.BufferGeometry();
+  ng.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  ng.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+  netGroup.add(new THREE.Points(ng,new THREE.PointsMaterial({size:0.7,map:DOT,vertexColors:true,transparent:true,opacity:0.95,blending:THREE.AdditiveBlending,depthWrite:false})));
+  const lp=[],lc=[];
+  for(let i=0;i<nodeVecs.length;i++) for(let j=i+1;j<nodeVecs.length;j++){
+    if(nodeVecs[i].distanceTo(nodeVecs[j])<7.0){
+      lp.push(nodeVecs[i].x,nodeVecs[i].y,nodeVecs[i].z, nodeVecs[j].x,nodeVecs[j].y,nodeVecs[j].z);
+      for(let k=0;k<2;k++) lc.push(0.2,0.5,0.7);
+    }
+  }
+  const lg=new THREE.BufferGeometry();
+  lg.setAttribute('position',new THREE.Float32BufferAttribute(lp,3));
+  lg.setAttribute('color',new THREE.Float32BufferAttribute(lc,3));
+  netGroup.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.16,blending:THREE.AdditiveBlending,depthWrite:false})));
+  const dp=[]; for(let i=0;i<DUST;i++) dp.push((Math.random()-0.5)*80,(Math.random()-0.5)*55,(Math.random()-0.5)*60);
+  const dg=new THREE.BufferGeometry(); dg.setAttribute('position',new THREE.Float32BufferAttribute(dp,3));
+  netGroup.add(new THREE.Points(dg,new THREE.PointsMaterial({size:0.35,map:DOT,color:0x88aacc,transparent:true,opacity:0.35,blending:THREE.AdditiveBlending,depthWrite:false})));
+})();
+
+/* ═══════════════════════ TIER 4 — the sub-agent constellation ═════════════ */
+const labelLayer = document.getElementById('labels');
+const dockBar = document.getElementById('dock');
+const agents = [];   // { data, sprite, glow, label, dock, orbit..., work state }
+
+function genAvatar(letter, hex){
+  const s=128, cv=document.createElement('canvas'); cv.width=cv.height=s; const g=cv.getContext('2d');
+  const cx=s/2; const grd=g.createRadialGradient(cx,cx,4,cx,cx,cx);
+  grd.addColorStop(0,'#0a0f16'); grd.addColorStop(0.55,shade(hex,-0.35)); grd.addColorStop(1,hex);
+  g.fillStyle=grd; g.beginPath(); g.arc(cx,cx,cx-8,0,7); g.fill();
+  g.strokeStyle=hex; g.lineWidth=3; g.globalAlpha=0.9; g.beginPath(); g.arc(cx,cx,cx-9,0,7); g.stroke();
+  g.globalAlpha=1; g.fillStyle='#eaf7ff'; g.font='bold 58px Segoe UI,sans-serif';
+  g.textAlign='center'; g.textBaseline='middle'; g.fillText(letter.toUpperCase(),cx,cx+2);
+  const tx=new THREE.CanvasTexture(cv); tx.needsUpdate=true; return tx;
+}
+function genGlow(hex){
+  const s=128, cv=document.createElement('canvas'); cv.width=cv.height=s; const g=cv.getContext('2d');
+  const grd=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  grd.addColorStop(0,hexA(hex,0.9)); grd.addColorStop(0.4,hexA(hex,0.3)); grd.addColorStop(1,hexA(hex,0));
+  g.fillStyle=grd; g.fillRect(0,0,s,s); const tx=new THREE.CanvasTexture(cv); tx.needsUpdate=true; return tx;
+}
+function shade(hex,amt){ const c=hx(hex); return '#'+[c[0],c[1],c[2]].map(v=>('0'+clamp(Math.round(v+amt*255),0,255).toString(16)).slice(-2)).join(''); }
+function hexA(hex,a){ const c=hx(hex); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+function hx(hex){ hex=hex.replace('#',''); return [parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16)]; }
+
+function addAgent(d, idx){
+  if(IS_MOBILE) return;                         // constellation hidden on small screens
+  const i = idx!=null?idx : agents.length;
+  const tex=genAvatar((d.name||'?')[0], d.color);
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,depthTest:false}));
+  sprite.scale.setScalar(0.46);
+  const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:genGlow(d.color),transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending}));
+  glow.scale.setScalar(1.25);
+  orbScene.add(glow); orbScene.add(sprite);
+  // label
+  const el=document.createElement('div'); el.className='agent-label';
+  el.innerHTML=`<div class="nm">${d.name}</div><div class="sp">${d.specialty||''}</div>`;
+  el.addEventListener('mouseenter',()=>{}); el.style.pointerEvents='auto';
+  el.addEventListener('click',()=>Cosmos.dispatch(d.id));
+  labelLayer.appendChild(el);
+  // dock slot
+  const slot=document.createElement('div'); slot.className='dock-slot'; slot.dataset.agentPanel=d.id;
+  slot.style.color=d.color; slot.textContent=(d.name||'')[0];
+  dockBar.appendChild(slot);
+  const n=agents.length+1;
+  const a={ data:d, sprite, glow, label:el, dock:slot,
+    radius: 2.55 + (i%4)*0.28,
+    speed: (REDUCED?0:(i%2?1:-1))*(0.06+0.02*(i%3)),
+    phase: (i/ Math.max(1,n))*Math.PI*2 + i*1.1,
+    tilt: (i%2?1:-1)*(0.35+0.12*(i%3)),
+    yaw: i*0.7,
+    breathe: i*1.3,
+    color:new THREE.Color(d.color),
+    flare:0, work:0, working:false, dockAmt:0, revealed:false,
+    pos:new THREE.Vector3() };
+  agents.push(a);
+  return a;
+}
+function loadAgents(){
+  fetch('/cosmos/agents').then(r=>r.json()).then(j=>{ (j.agents||[]).forEach((d,i)=>addAgent(d,i)); })
+    .catch(()=>{ /* offline: seed a trio so the sky isn't empty */
+      [['scout','Scout','Web research','#4de3ff'],['scribe','Scribe','Drafts replies','#b98cff'],['librarian','Librarian','Notes recall','#4dffa0']]
+        .forEach((s,i)=>addAgent({id:s[0],name:s[1],specialty:s[2],color:s[3]},i));
+    });
+}
+
+/* agent orbital position around the orb (origin) */
+const _tmp=new THREE.Vector3();
+function agentWorldPos(a,t){
+  const ang=a.phase + (REDUCED?0:t*a.speed*Math.PI*2);
+  _tmp.set(Math.cos(ang)*a.radius, Math.sin(ang)*a.radius, 0);
+  _tmp.applyAxisAngle(AX_X, a.tilt); _tmp.applyAxisAngle(AX_Y, a.yaw*0.15);
+  return _tmp;
+}
+const AX_X=new THREE.Vector3(1,0,0), AX_Y=new THREE.Vector3(0,1,0);
+
+/* ═══════════════════════ TIER 5 — dispatch beams / flares / rings ═════════ */
+const beams=[];   // { mesh, bead, ring, a, t, dur }
+function dispatch(id){
+  const a=agents.find(x=>x.data.id===id); if(!a) return;
+  const to=a.pos.clone();
+  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,1,8,1,true),
+    new THREE.MeshBasicMaterial({color:a.color,transparent:true,opacity:0.0,blending:THREE.AdditiveBlending,depthWrite:false}));
+  orbScene.add(cyl);
+  const bead=new THREE.Sprite(new THREE.SpriteMaterial({map:genGlow('#'+a.color.getHexString()),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false}));
+  bead.scale.setScalar(0.5); orbScene.add(bead);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.28,0.34,40),
+    new THREE.MeshBasicMaterial({color:a.color,transparent:true,opacity:0.0,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+  orbScene.add(ring);
+  beams.push({cyl,bead,ring,a,to,t:0,dur:2.4});
+  // little "sending" ping at the orb
+  const oring=new THREE.Mesh(new THREE.RingGeometry(0.9,0.98,48),
+    new THREE.MeshBasicMaterial({color:a.color,transparent:true,opacity:0.5,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
+  orbScene.add(oring); orbPings.push({m:oring,t:0});
+}
+const orbPings=[];
+function setWorking(id,on){ const a=agents.find(x=>x.data.id===id); if(a){ a.working=!!on; a.dock.classList.toggle('active',!!on); } }
+
+/* screen→world at the orb's depth plane (for docking) */
+function screenToWorld(cx,cy){
+  const v=new THREE.Vector3((cx/innerWidth)*2-1, -(cy/innerHeight)*2+1, 0.5).unproject(orbCam);
+  const dir=v.sub(orbCam.position).normalize(); const dist=(0-orbCam.position.z)/dir.z;
+  return orbCam.position.clone().add(dir.multiplyScalar(dist));
+}
+
+/* ═══════════════════════ TIER 6 — public API + demo driver + chat ═════════ */
+let realEvents=false;   // once true, demo driver stops
+const Cosmos = {
+  setState, dispatch, setWorking, addAgent:(d)=>addAgent(d),
+  setPerf:(on)=>{ perfMode=on; bgRenderer.setPixelRatio(bgPixelRatio()); onResize(); document.getElementById('perf-btn').classList.toggle('on',on); },
+  audioFromElement:(el)=>audio.attach(el), audioFromStream:(s)=>audio.attachStream(s),
+  _agents:agents,
+};
+window.Cosmos = Cosmos;
+
+document.getElementById('perf-btn').onclick=()=>Cosmos.setPerf(!perfMode);
+
+/* demo driver — keeps the scene alive with no backend, until real events arrive */
+let demoT=0, demoIdx=0;
+const demoSeq=['listening','processing','speaking','idle'];
+function demoStep(dt){
+  if(realEvents) return;
+  demoT-=dt;
+  if(demoT<=0){
+    const s=demoSeq[demoIdx%demoSeq.length]; setState(s);
+    if(s==='processing' && agents.length){ const a=agents[demoIdx%agents.length]; dispatch(a.data.id); setWorking(a.data.id,true);
+      setTimeout(()=>setWorking(a.data.id,false),3200); }
+    demoIdx++; demoT = s==='idle'?4.0 : 3.0;
+  }
+}
+
+/* ── talk to Trillion: /chat SSE drives real states + dispatch on tool events ─ */
+const inputEl=document.getElementById('input'), subtitleEl=document.getElementById('subtitle');
+function showSub(t){ subtitleEl.textContent=t||''; }
+inputEl.addEventListener('input',()=>{ inputEl.style.height='auto'; inputEl.style.height=Math.min(inputEl.scrollHeight,120)+'px'; });
+inputEl.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); }});
+document.getElementById('send-btn').onclick=sendChat;
+
+async function sendChat(){
+  const text=inputEl.value.trim(); if(!text) return;
+  inputEl.value=''; inputEl.style.height='auto';
+  realEvents=true; setState('processing'); showSub('');
+  let reply='', lastTurn=null;
+  try{
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+    if(r.status===401){ setState('error'); showSub('Not signed in — open with your ?token= link.'); return; }
+    if(!r.ok){ setState('error'); showSub('Server error ('+r.status+').'); return; }
+    const rd=r.body.getReader(), dec=new TextDecoder(); let buf='';
+    setState('speaking');
+    outer: while(true){
+      const {done,value}=await rd.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop();
+      for(const line of lines){ if(!line.startsWith('data: ')) continue;
+        const p=line.slice(6); if(p==='[DONE]') break outer;
+        try{ const o=JSON.parse(p);
+          if(o.tool){ const slug=String(o.tool).replace(/^dispatch_to_/,''); const a=agents.find(x=>x.data.id==='factory:'+slug||x.data.id===slug);
+            if(a){ dispatch(a.data.id); setWorking(a.data.id,true); setTimeout(()=>setWorking(a.data.id,false),4000);} }
+          if(o.signoff){ setState('idle'); break outer; }
+          if(o.turn_id){ lastTurn=o.turn_id; }
+          if(o.chunk!=null){ reply+=o.chunk; showSub(reply); }
+        }catch(e){}
+      }
+    }
+  }catch(e){ setState('error'); showSub('Connection error.'); return; }
+  if(lastTurn) playTTS(lastTurn); else { setState('idle'); }
+}
+
+/* prime the AudioContext on the first real user gesture so playback isn't
+   blocked by the browser autoplay policy. */
+let audioPrimed=false;
+function primeAudio(){ if(audioPrimed) return; audioPrimed=true; try{ audio._ctx(); }catch(e){} }
+['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev, primeAudio, {passive:true}));
+
+/* speak the reply aloud while a parallel analyser tap drives the orb */
+let ttsEl=null;
+function playTTS(turnId){
+  setState('speaking');
+  const url='/api/tts/'+turnId+(TOKEN?('?token='+encodeURIComponent(TOKEN)):'');
+  if(!ttsEl){ ttsEl=new Audio(); ttsEl.crossOrigin='anonymous'; }
+  ttsEl.src=url;
+  try{ audio.attach(ttsEl); if(audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume(); }catch(e){}
+  ttsEl.onended=()=>{ setState('idle'); showSub(''); };
+  ttsEl.onerror=()=>{ setState('idle'); };
+  ttsEl.play().catch(()=>{ setState('idle'); });   // if blocked, the reply text still shows
+}
+
+/* microphone (Web Speech for transcript + analyser for reactivity) */
+const micBtn=document.getElementById('mic-btn');
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null, micStream=null;
+if(!SR){ micBtn.style.opacity=.4; }
+else{
+  rec=new SR(); rec.interimResults=true; rec.lang='en-US';
+  rec.onstart=async()=>{ realEvents=true; setState('listening'); micBtn.classList.add('listening');
+    try{ micStream=await navigator.mediaDevices.getUserMedia({audio:true}); audio.attachStream(micStream);}catch(e){} };
+  rec.onresult=e=>{ let s=''; for(const r of e.results) s+=r[0].transcript; inputEl.value=s; };
+  rec.onend=()=>{ micBtn.classList.remove('listening'); if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+    if(inputEl.value.trim()) sendChat(); else setState('idle'); };
+  micBtn.onclick=()=>{ try{ rec.start(); }catch(e){} };
+}
+
+/* ═══════════════════════ THE ONE ANIMATION LOOP ═══════════════════════════ */
+let bgFrame=0;
+function tick(){
+  if(!running) return;
+  const dt=Math.min(clock.getDelta(),0.05); const t=clock.elapsedTime;
+  demoStep(dt);
+  audio.read(t);
+
+  /* ease live orb values toward the current state (nothing snaps) */
+  const S=STATES[stateName], k=0.05;
+  cur.bright=lerp(cur.bright,S.bright,k); cur.amp=lerp(cur.amp,S.amp,k); cur.churn=lerp(cur.churn,S.churn,k);
+  cur.glow=lerp(cur.glow,S.glow,k); cur.halo=lerp(cur.halo,S.halo,k); cur.spin=lerp(cur.spin,S.spin,k);
+  cur.size=lerp(cur.size,S.size,k); cur.rings=lerp(cur.rings,S.rings,0.04);
+  for(let i=0;i<3;i++){ cur.core[i]=lerp(cur.core[i],S.core[i],k); cur.rim[i]=lerp(cur.rim[i],S.rim[i],k); }
+
+  /* orb uniforms + motion */
+  orbUniforms.uTime.value=t; orbUniforms.uAmp.value=cur.amp; orbUniforms.uChurn.value=cur.churn;
+  orbUniforms.uLoud.value=audio.loud; orbUniforms.uBass.value=audio.bass;
+  orbUniforms.uColorCore.value.setRGB(cur.core[0],cur.core[1],cur.core[2]);
+  orbUniforms.uColorRim.value.setRGB(cur.rim[0],cur.rim[1],cur.rim[2]);
+  orbUniforms.uBright.value=cur.bright*(1.0+audio.loud*0.4);
+  const pulse=1.0+audio.loud*0.10*(stateName==='speaking'?1.5:0.6)+Math.sin(t*1.4)*0.012;
+  orb.scale.setScalar(cur.size*pulse); glowShell.scale.setScalar(cur.size*pulse*1.02);
+  if(!REDUCED){ orb.rotation.y+=dt*cur.spin; orb.rotation.x+=dt*cur.spin*0.25; }
+  glowShell.rotation.copy(orb.rotation);
+  glowUniforms.uColor.value.setRGB(cur.rim[0],cur.rim[1],cur.rim[2]);
+  glowUniforms.uInt.value=cur.halo*(0.8+audio.loud*0.5);
+
+  /* processing rings */
+  ringsEase=lerp(ringsEase,cur.rings,0.05);
+  const ringCol=new THREE.Color().setRGB(lerp(0.16,0.5,ringsEase*0.0)+0,0,0);
+  rings.forEach((m,i)=>{
+    if(!REDUCED) m.rotation.z+=dt*m.userData.spin*(0.5+ringsEase);
+    m.material.opacity=ringsEase*(0.35+0.35*Math.sin(t*2.0+m.userData.phase));
+    // colour drifts teal → purple as thinking deepens
+    m.material.color.setRGB(lerp(0.16,0.55,ringsEase), lerp(0.85,0.3,ringsEase), lerp(0.95,0.95,1.0));
+  });
+  ringGroup.scale.setScalar(cur.size);
+  /* pulse waves while thinking */
+  if(stateName==='processing'){ waveTimer-=dt; if(waveTimer<=0){ spawnWave(); waveTimer=1.6; } }
+  for(let i=waves.length-1;i>=0;i--){ const w=waves[i]; w.userData.t+=dt; const p=w.userData.t/2.2;
+    w.scale.setScalar(1.0+p*2.2); w.material.opacity=0.25*(1.0-p);
+    if(p>=1){ orbScene.remove(w); w.geometry.dispose(); w.material.dispose(); waves.splice(i,1); } }
+
+  /* background glow tracks orb + brightens on speaking/processing */
+  skyUniforms.uTime.value=t; skyUniforms.uGlowColor.value.setRGB(cur.rim[0],cur.rim[1],cur.rim[2]);
+  skyUniforms.uGlow.value=lerp(skyUniforms.uGlow.value, cur.glow*(0.7+audio.loud*0.5), 0.06);
+  skyUniforms.uFade.value=lerp(skyUniforms.uFade.value,1.0,0.02);
+  if(!REDUCED){ netGroup.rotation.y+=dt*0.012; netGroup.rotation.x=Math.sin(t*0.05)*0.05;
+    netCam.position.x=Math.sin(t*0.05)*1.5; netCam.position.y=Math.cos(t*0.04)*1.0; netCam.lookAt(0,0,0); }
+
+  /* constellation: position sprites, track labels, flares, docking */
+  for(const a of agents){
+    const wp=agentWorldPos(a,t); a.pos.copy(wp);
+    // docking target overrides orbit when working & a panel exists
+    let target=wp;
+    if(a.working && a.dock){
+      const rc=a.dock.getBoundingClientRect(); if(rc.width){ target=screenToWorld(rc.left+rc.width/2, rc.top+rc.height/2); }
+      a.dockAmt=lerp(a.dockAmt, 1, 0.12);          // snappy in
+    } else { a.dockAmt=lerp(a.dockAmt, 0, 0.04); }  // graceful out
+    const shown=wp.clone().lerp(target, a.dockAmt);
+    a.sprite.position.copy(shown); a.glow.position.copy(shown);
+    // flare (dispatch) + working pulse + breathing
+    a.flare=lerp(a.flare,0,0.06);
+    const breathe=0.5+0.5*Math.sin(t*1.3+a.breathe);
+    const work=a.working?(0.5+0.5*Math.sin(t*5.0)):0;
+    const sc=0.46*(1.0+a.flare*0.7+work*0.12);
+    a.sprite.scale.setScalar(sc);
+    a.glow.scale.setScalar(1.15*(1.0+a.flare*1.2+work*0.5)+breathe*0.12);
+    a.glow.material.opacity=0.5+a.flare*0.5+work*0.4+breathe*0.15;
+    // project → screen for the HTML label; depth fade & behind-orb hide
+    const proj=shown.clone().project(orbCam);
+    const camZ=shown.clone().applyMatrix4(orbCam.matrixWorldInverse).z;   // more negative = farther
+    const behind = camZ < -orbCam.position.z;   // farther than orb centre
+    const sx=(proj.x*0.5+0.5)*innerWidth, sy=(-proj.y*0.5+0.5)*innerHeight;
+    const nearCentre = Math.hypot(proj.x,proj.y) < 0.14;
+    let op = behind ? 0.28 : 1.0;
+    if(behind && nearCentre) op=0;             // directly behind the orb → hide
+    if(a.working) op=Math.max(op,0.9);
+    a.label.style.left=sx+'px'; a.label.style.top=(sy+26)+'px';
+    a.label.style.zIndex=String(1000+Math.round(camZ*10));
+    a.label.classList.toggle('busy',a.working);
+    if(!a.revealed){ a.revealed=true; }         // reveal only after first real projection
+    a.label.style.opacity=(proj.z<1?op:0);
+  }
+
+  /* dispatch beams */
+  for(let i=beams.length-1;i>=0;i--){ const b=beams[i]; b.t+=dt; const p=b.t/b.dur;
+    const from=new THREE.Vector3(0,0,0), to=b.a.pos;
+    // orient cylinder from orb → agent, grow out then fade
+    const dir=new THREE.Vector3().subVectors(to,from); const len=dir.length();
+    b.cyl.position.copy(from).add(dir.clone().multiplyScalar(0.5));
+    b.cyl.scale.set(1,len,1); b.cyl.quaternion.setFromUnitVectors(AX_Y,dir.clone().normalize());
+    const env=Math.sin(clamp(p,0,1)*Math.PI);      // peak in the middle
+    b.cyl.material.opacity=env*0.8;
+    // bead races out and back
+    const travel=p<0.5? p*2 : (1-(p-0.5)*2);
+    b.bead.position.copy(from).add(dir.clone().multiplyScalar(clamp(travel,0,1)));
+    b.bead.scale.setScalar(0.35+env*0.4); b.bead.material.opacity=env;
+    b.a.flare=Math.max(b.a.flare,env);
+    // sonar ring at the agent, peaks mid
+    b.ring.position.copy(to); b.ring.quaternion.copy(orbCam.quaternion);
+    b.ring.scale.setScalar(0.3+p*2.2); b.ring.material.opacity=env*0.7;
+    if(p>=1){ [b.cyl,b.bead,b.ring].forEach(m=>{orbScene.remove(m); m.geometry&&m.geometry.dispose(); m.material.dispose();}); beams.splice(i,1); }
+  }
+  for(let i=orbPings.length-1;i>=0;i--){ const o=orbPings[i]; o.t+=dt; const p=o.t/1.0;
+    o.m.quaternion.copy(orbCam.quaternion); o.m.scale.setScalar(1+p*1.5); o.m.material.opacity=0.5*(1-p);
+    if(p>=1){ orbScene.remove(o.m); o.m.geometry.dispose(); o.m.material.dispose(); orbPings.splice(i,1); } }
+
+  /* ── render: background (optionally every other frame in perf mode) then orb ─ */
+  bgFrame++;
+  if(!perfMode || (bgFrame&1)){
+    bgRenderer.clear();
+    bgRenderer.render(skyScene, skyCam);
+    bgRenderer.render(netScene, netCam);
+  }
+  orbRenderer.render(orbScene, orbCam);
+  requestAnimationFrame(tick);
+}
+
+/* ═══════════════════════ resize / visibility / cleanup ════════════════════ */
+function onResize(){
+  const w=innerWidth,h=innerHeight;
+  orbRenderer.setSize(w,h); orbCam.aspect=w/h; orbCam.updateProjectionMatrix();
+  bgRenderer.setSize(w,h); netCam.aspect=w/h; netCam.updateProjectionMatrix();
+  skyUniforms.uRes.value.set(w*bgPixelRatio(),h*bgPixelRatio());
+}
+addEventListener('resize',onResize); onResize();
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ running=false; }
+  else if(!running){ running=true; clock.getDelta(); requestAnimationFrame(tick); }
+});
+addEventListener('pagehide',()=>{
+  try{ orbRenderer.dispose(); bgRenderer.dispose(); }catch(e){}
+});
+
+/* ── go ── */
+loadAgents();
+setState('idle');
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Trillion</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  #bg-canvas  { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 1; }
+  #orb-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 2; }
+  #hint { position: fixed; left: 20px; top: 16px;
+          font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px;
+          letter-spacing: .22em; text-transform: uppercase; color: #2af5ff88; z-index: 10;
+          pointer-events: none; }
+  #caption { position: fixed; left: 50%; bottom: 78px; transform: translateX(-50%);
+             max-width: min(620px, 92vw); text-align: center; color: #b8c4e6; font-size: 13px;
+             line-height: 1.55; font-family: -apple-system, "Segoe UI", sans-serif; z-index: 11;
+             opacity: 0; transition: opacity .3s; pointer-events: none;
+             text-shadow: 0 1px 10px rgba(0,0,0,0.85); }
+  #dock { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 12;
+          display: flex; gap: 8px; align-items: center; width: min(560px, 92vw);
+          background: rgba(6,9,18,0.55); border: 1px solid rgba(42,245,255,0.18);
+          border-radius: 14px; padding: 7px 8px; backdrop-filter: blur(9px); }
+  #dock input { flex: 1; background: transparent; border: none; outline: none; color: #dbe6ff;
+                font-family: -apple-system, "Segoe UI", sans-serif; font-size: 14px; padding: 6px 8px; }
+  #dock input::placeholder { color: #566089; }
+  #dock button { background: rgba(42,245,255,0.10); border: 1px solid rgba(42,245,255,0.28);
+                 color: #2af5ff; border-radius: 10px; width: 40px; height: 34px; cursor: pointer;
+                 font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  #dock button:hover { background: rgba(42,245,255,0.20); }
+  #dock #mic.on { border-color: #ff5f7a; color: #ff5f7a; background: rgba(255,95,122,0.16); }
+  #perf { position: fixed; top: 14px; right: 14px; z-index: 12; background: rgba(6,9,18,0.5);
+          border: 1px solid rgba(120,140,200,0.25); color: #8fa0c8; border-radius: 8px;
+          font-size: 11px; letter-spacing: .05em; padding: 5px 9px; cursor: pointer;
+          font-family: -apple-system, "Segoe UI", sans-serif; }
+  #perf.on { color: #2af5ff; border-color: rgba(42,245,255,0.4); }
+  #confirm { position: fixed; inset: 0; z-index: 20; display: none; align-items: center;
+             justify-content: center; background: rgba(2,4,10,0.6); backdrop-filter: blur(4px); }
+  #confirm .card { background: rgba(10,14,26,0.97); border: 1px solid rgba(42,245,255,0.3);
+                   border-radius: 14px; padding: 20px 22px; width: min(400px, 90vw);
+                   font-family: -apple-system, "Segoe UI", sans-serif; color: #dbe6ff;
+                   box-shadow: 0 12px 44px rgba(0,0,0,0.65); }
+  #confirm h3 { font-size: 15px; font-weight: 600; margin: 0 0 8px; color: #2af5ff; }
+  #confirm .detail { font-size: 12.5px; color: #9fb0d8; line-height: 1.55; margin-bottom: 16px;
+                     white-space: pre-wrap; background: rgba(255,255,255,0.04);
+                     border-radius: 8px; padding: 8px 10px; }
+  #confirm .row { display: flex; gap: 10px; justify-content: flex-end; }
+  #confirm button { border-radius: 9px; padding: 8px 16px; font-size: 13px; cursor: pointer;
+                    border: 1px solid transparent; font-family: inherit; }
+  #confirm .deny { background: transparent; border-color: rgba(160,170,200,0.3); color: #9fb0d8; }
+  #confirm .ok { background: rgba(42,245,255,0.15); border-color: rgba(42,245,255,0.4); color: #2af5ff; }
+  #shield { position: fixed; top: 14px; right: 74px; z-index: 12; width: 36px; height: 30px;
+            display: flex; align-items: center; justify-content: center; border-radius: 8px;
+            cursor: pointer; background: rgba(6,9,18,0.5); border: 1px solid rgba(120,140,200,0.25);
+            font-size: 14px; }
+  #shield.green { color: #33e0a0; border-color: rgba(51,224,160,0.45); }
+  #shield.amber { color: #ffb84d; border-color: rgba(255,184,77,0.45); }
+  #shield.red   { color: #ff5f7a; border-color: rgba(255,95,122,0.45); }
+  #shield-sheet { position: fixed; top: 52px; right: 14px; z-index: 21; width: min(330px, 92vw);
+                  background: rgba(10,14,26,0.97); border: 1px solid rgba(120,140,200,0.25);
+                  border-radius: 12px; padding: 14px 16px; display: none; max-height: 72vh; overflow: auto;
+                  font-family: -apple-system, "Segoe UI", sans-serif; color: #dbe6ff;
+                  box-shadow: 0 12px 44px rgba(0,0,0,0.62); }
+  #shield-sheet h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; display: flex;
+                     justify-content: space-between; align-items: center; }
+  #shield-sheet .sig { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0;
+                       border-top: 1px solid rgba(255,255,255,0.06); font-size: 12px; }
+  #shield-sheet .sig .lab { color: #aeb9d8; white-space: nowrap; }
+  #shield-sheet .sig .val { text-align: right; }
+  #shield-sheet .sev-critical .val { color: #ff5f7a; }
+  #shield-sheet .sev-warning .val { color: #ffb84d; }
+  #shield-sheet .sev-info .val { color: #8fb0ff; }
+  #shield-sheet .sev-ok .val { color: #8fd8b0; }
+  #shield-sheet button { margin-top: 10px; width: 100%; background: rgba(42,245,255,0.12);
+                         border: 1px solid rgba(42,245,255,0.3); color: #2af5ff; border-radius: 8px;
+                         padding: 7px; cursor: pointer; font-size: 12px; font-family: inherit; }
+  #labels { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  .agent-label { position: absolute; transform: translateX(-50%); text-align: center;
+                 font-family: -apple-system, "Segoe UI", sans-serif; white-space: nowrap;
+                 opacity: 0; will-change: left, top, opacity; pointer-events: none; }
+  .agent-label .nm { font-size: 13px; font-weight: 600; letter-spacing: .03em; }
+  .agent-label .sp { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase;
+                     color: #b8c4e0; opacity: .65; margin-top: 1px; }
+</style>
+</head>
+<body>
+<script>
+/* Token bootstrap: if TRILLION_TOKEN auth is enabled, attach it to every API
+   call. Reads ?token=… once (then strips it from the URL) or localStorage.
+   Completely inert in the default localhost-only mode. */
+(function(){
+  try {
+    const u = new URL(location.href);
+    const q = u.searchParams.get('token');
+    if (q){ localStorage.setItem('trillion_token', q); u.searchParams.delete('token'); history.replaceState({}, '', u.toString()); }
+    const tk = localStorage.getItem('trillion_token');
+    if (tk){
+      const _f = window.fetch;
+      window.fetch = function(url, opt){ opt = opt || {}; opt.headers = Object.assign({}, opt.headers, { Authorization: 'Bearer ' + tk }); return _f(url, opt); };
+    }
+  } catch(e){}
+})();
+</script>
+<canvas id="bg-canvas"></canvas>
+<canvas id="orb-canvas"></canvas>
+<div id="labels"></div>
+<div id="hint">Trillion</div>
+<div id="caption"></div>
+<div id="dock">
+  <input id="msg" type="text" placeholder="Ask Trillion anything…" autocomplete="off">
+  <button id="mic" title="Speak">🎤</button>
+  <button id="send" title="Send">➤</button>
+</div>
+<button id="perf" title="Toggle performance mode">PERF</button>
+<button id="shield" title="Security shield">🛡</button>
+<div id="shield-sheet"></div>
+<div id="confirm"><div class="card">
+  <h3 id="confirm-title"></h3>
+  <div class="detail" id="confirm-detail"></div>
+  <div class="row">
+    <button class="deny" id="confirm-deny">Deny</button>
+    <button class="ok" id="confirm-ok">Allow</button>
+  </div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ─────────────────────────────────────────────────────────────
+   Tier 1 — the orb.
+   A wireframe icosahedron displaced by drifting simplex noise
+   (so it "breathes"), shaded with a fresnel rim glow, wrapped in
+   a soft additive glow shell. Slow two-axis tumble on black.
+   ───────────────────────────────────────────────────────────── */
+
+const ACCENT = new THREE.Color(0x2af5ff); // cyan
+
+// ── shared GLSL: Ashima 3D simplex noise + fbm ──
+const NOISE_GLSL = `
+vec3 mod289(vec3 x){return x - floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x - floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+  const vec4 D = vec4(0.0,0.5,1.0,2.0);
+  vec3 i  = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = mod289(i);
+  vec4 p = permute( permute( permute(
+             i.z + vec4(0.0, i1.z, i2.z, 1.0))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+}
+float fbm(vec3 p){
+  float s = 0.0, a = 0.5;
+  for(int i=0;i<4;i++){ s += a*snoise(p); p *= 2.02; a *= 0.5; }
+  return s;
+}`;
+
+const clock = new THREE.Clock();
+const canvas = document.getElementById('orb-canvas');
+
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 5.6); // pulled back so the orb sits centered with room to orbit
+
+const orbGroup = new THREE.Group();
+scene.add(orbGroup);
+
+// ── the orb: wireframe icosahedron with noise displacement + fresnel ──
+const orbUniforms = {
+  uTime:  { value: 0 },
+  uColor: { value: ACCENT.clone() },
+  uAmp:   { value: 0.10 },   // breathing depth
+  uFreq:  { value: 1.7 },
+  uRim:   { value: 1.9 },    // fresnel exponent
+  uBright:{ value: 0.7 },
+  uLevel: { value: 0 },      // audio loudness (0..1)
+  uBass:  { value: 0 },      // audio bass (0..1)
+  uChurn: { value: 0.6 },    // surface-motion speed
+};
+
+const orbMat = new THREE.ShaderMaterial({
+  uniforms: orbUniforms,
+  wireframe: true,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  vertexShader: NOISE_GLSL + `
+    uniform float uTime, uAmp, uFreq, uRim, uLevel, uBass, uChurn;
+    varying float vFres;
+    void main(){
+      vec3 p = position;
+      float n = fbm(normalize(position)*uFreq + vec3(0.0, uTime*0.18*uChurn, uTime*0.07*uChurn));
+      float amp = uAmp + uLevel * 0.30;               // voice deforms the surface
+      p += normal * n * amp;
+      p *= 1.0 + uBass * 0.05;                          // bass gives a size pulse
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      vec3 vn = normalize(normalMatrix * normal);
+      vec3 vd = normalize(-mv.xyz);
+      vFres = pow(1.0 - max(dot(vn, vd), 0.0), uRim);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uBright;
+    varying float vFres;
+    void main(){
+      vec3 col = uColor * (0.25 + 1.35 * vFres) * uBright;
+      float alpha = 0.30 + 0.70 * vFres;
+      gl_FragColor = vec4(col, alpha);
+    }`,
+});
+const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 6), orbMat);
+orbGroup.add(orb);
+
+// ── soft glow halo: a camera-facing additive sprite with a radial falloff ──
+function makeHaloTexture(){
+  const s = 256, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  grd.addColorStop(0.00, 'rgba(255,255,255,0.85)');
+  grd.addColorStop(0.18, 'rgba(255,255,255,0.35)');
+  grd.addColorStop(0.45, 'rgba(255,255,255,0.10)');
+  grd.addColorStop(1.00, 'rgba(255,255,255,0.0)');
+  g.fillStyle = grd; g.fillRect(0, 0, s, s);
+  return new THREE.CanvasTexture(c);
+}
+const haloMat = new THREE.SpriteMaterial({
+  map: makeHaloTexture(),
+  color: ACCENT.clone(),
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  opacity: 0.45,
+});
+const halo = new THREE.Sprite(haloMat);
+halo.scale.set(4.6, 4.6, 1);
+scene.add(halo); // in scene (not orbGroup) so it never spins — a steady pool of light
+
+/* ─────────────────────────────────────────────────────────────
+   Tier 2 — the cosmic background (separate renderer layer).
+   Part A: a full-screen procedural sky (nebula + stars + orb glow
+   + vignette). Part B: a faint distant web of clustered nodes,
+   connecting lines and dust. Fades in over ~1.5s.
+   ───────────────────────────────────────────────────────────── */
+const IS_MOBILE = Math.min(window.innerWidth, window.innerHeight) < 640;
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const bgCanvas = document.getElementById('bg-canvas');
+const bgRenderer = new THREE.WebGLRenderer({ canvas: bgCanvas, antialias: true });
+bgRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+bgRenderer.setSize(window.innerWidth, window.innerHeight);
+bgRenderer.setClearColor(0x000008, 1);
+bgRenderer.autoClear = false;
+
+// Part A — the sky (fullscreen quad in an ortho scene)
+const skyScene = new THREE.Scene();
+const skyCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const skyUniforms = {
+  uTime:     { value: 0 },
+  uAspect:   { value: window.innerWidth / window.innerHeight },
+  uOrbColor: { value: ACCENT.clone() },
+  uFade:     { value: 0 },
+  uGlow:     { value: 0.75 },
+};
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: skyUniforms,
+  depthTest: false, depthWrite: false,
+  vertexShader: `
+    varying vec2 vUv;
+    void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: NOISE_GLSL + `
+    varying vec2 vUv;
+    uniform float uTime, uAspect, uFade, uGlow;
+    uniform vec3 uOrbColor;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+    float starLayer(vec2 uv, float density, float sz, float tw){
+      vec2 g = uv * density;
+      vec2 id = floor(g), f = fract(g);
+      float on = step(0.86, hash(id));
+      vec2 pos = vec2(hash(id + 1.3), hash(id + 2.7));
+      float d = length(f - pos);
+      float s = smoothstep(sz, 0.0, d) * on;
+      float tk = 0.55 + 0.45 * sin(uTime * tw + hash(id) * 6.2831);
+      return s * tk;
+    }
+    void main(){
+      vec2 uv = vUv;
+      vec2 p = (uv - 0.5) * vec2(uAspect, 1.0);
+      float r = length(p);
+
+      // dark base: brighter toward center
+      vec3 col = mix(vec3(0.005,0.01,0.02), vec3(0.02,0.05,0.07), smoothstep(0.9,0.0,r));
+
+      // nebula clouds — a few drifting fbm layers in different colors
+      float n1 = fbm(vec3(p*2.4 + vec2(uTime*0.015, uTime*0.008), uTime*0.02));
+      float n2 = fbm(vec3(p*1.7 - vec2(uTime*0.010, uTime*0.006), 4.0));
+      float n3 = fbm(vec3(p*3.3 + vec2(0.0, -uTime*0.012), 9.0));
+      col += vec3(0.05,0.30,0.24) * smoothstep(0.15,0.85,n1) * 0.35;   // teal-green
+      col += vec3(0.35,0.06,0.28) * smoothstep(0.35,0.95,n2) * 0.16;   // magenta
+      col += vec3(0.08,0.14,0.40) * smoothstep(0.25,0.90,n3) * 0.20;   // blue
+
+      // two star fields
+      col += vec3(0.85,0.95,1.0) * starLayer(uv, 120.0, 0.045, 2.1);
+      col += vec3(0.8,0.9,1.0)  * starLayer(uv * 0.6 + 3.1, 55.0, 0.09, 1.3) * 1.4;
+
+      // soft glow pooled behind the orb, in the orb's live color
+      col += uOrbColor * smoothstep(0.55, 0.0, r) * 0.28 * uGlow;
+
+      // vignette
+      col *= smoothstep(1.15, 0.25, r);
+
+      gl_FragColor = vec4(col * uFade, 1.0);
+    }`,
+});
+skyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), skyMat));
+
+// Part B — the distant node-web
+const netScene = new THREE.Scene();
+const netCam = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+netCam.position.set(0, 0, 14);
+const netGroup = new THREE.Group();
+netScene.add(netGroup);
+
+(function buildNetwork(){
+  const NODES = IS_MOBILE ? 55 : 110;
+  const CLUSTERS = 8;
+  const DUST = IS_MOBILE ? 150 : 320;
+  const palette = [
+    new THREE.Color(0x2af5ff), new THREE.Color(0x7c5cff), new THREE.Color(0x22d3a8),
+    new THREE.Color(0x3b82f6), new THREE.Color(0xff5fa2), new THREE.Color(0x36e0c0),
+    new THREE.Color(0x9b6bff), new THREE.Color(0x2aa7ff),
+  ];
+  // cluster centers spread through a wide, deep box behind the orb
+  const centers = [];
+  for (let i = 0; i < CLUSTERS; i++){
+    centers.push(new THREE.Vector3(
+      (Math.random()-0.5) * 26, (Math.random()-0.5) * 16, (Math.random()-0.5) * 14 - 4
+    ));
+  }
+  const positions = [], colors = [], pts = [];
+  for (let i = 0; i < NODES; i++){
+    const ci = Math.floor(Math.random() * CLUSTERS);
+    const c = centers[ci];
+    const v = c.clone().add(new THREE.Vector3(
+      (Math.random()-0.5) * 5, (Math.random()-0.5) * 5, (Math.random()-0.5) * 5
+    ));
+    pts.push(v);
+    positions.push(v.x, v.y, v.z);
+    const col = palette[ci];
+    colors.push(col.r, col.g, col.b);
+  }
+  const nodeGeo = new THREE.BufferGeometry();
+  nodeGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  nodeGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const nodeMat = new THREE.PointsMaterial({
+    size: 0.16, vertexColors: true, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  });
+  netGroup.add(new THREE.Points(nodeGeo, nodeMat));
+
+  // connect nodes that are close together
+  const linePos = [], lineCol = [];
+  for (let i = 0; i < pts.length; i++){
+    for (let j = i + 1; j < pts.length; j++){
+      if (pts[i].distanceTo(pts[j]) < 4.2){
+        linePos.push(pts[i].x, pts[i].y, pts[i].z, pts[j].x, pts[j].y, pts[j].z);
+        lineCol.push(colors[i*3], colors[i*3+1], colors[i*3+2],
+                     colors[j*3], colors[j*3+1], colors[j*3+2]);
+      }
+    }
+  }
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+  lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCol, 3));
+  const lineMat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.16,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  netGroup.add(new THREE.LineSegments(lineGeo, lineMat));
+
+  // floating dust
+  const dust = [];
+  for (let i = 0; i < DUST; i++){
+    dust.push((Math.random()-0.5)*34, (Math.random()-0.5)*22, (Math.random()-0.5)*18 - 3);
+  }
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(dust, 3));
+  const dustMat = new THREE.PointsMaterial({
+    size: 0.05, color: 0x9fd8ff, transparent: true, opacity: 0.35,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  netGroup.add(new THREE.Points(dustGeo, dustMat));
+})();
+
+function renderBackground(t){
+  skyUniforms.uTime.value = t;
+  skyUniforms.uFade.value = Math.min(t / 1.5, 1);          // fade in over 1.5s
+  skyUniforms.uOrbColor.value.copy(orbUniforms.uColor.value);
+  skyUniforms.uGlow.value = bgGlow;
+  netGroup.rotation.y = t * 0.02;
+  netGroup.rotation.x = Math.sin(t * 0.03) * 0.12;
+  // gentle wandering camera drift (calmed under reduced-motion)
+  const drift = REDUCED ? 0.15 : 1.0;
+  netCam.position.x = Math.sin(t * 0.05) * 0.8 * drift;
+  netCam.position.y = Math.cos(t * 0.04) * 0.5 * drift;
+  netCam.lookAt(0, 0, 0);
+  bgRenderer.clear();
+  bgRenderer.render(skyScene, skyCam);
+  bgRenderer.render(netScene, netCam);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tier 3 — conversational states + voice reactivity.
+   Each state is a target "mood" the orb eases toward — nothing
+   snaps. Real audio (loudness + bass) deforms the orb when it's
+   flowing; a synthetic speech-like motion drives it otherwise.
+   ───────────────────────────────────────────────────────────── */
+const CYAN   = new THREE.Color(0x2af5ff);
+const PURPLE = new THREE.Color(0x8a5cff);
+
+const STATES = {
+  idle:       { color: 0x145863, amp: 0.09, churn: 0.55, spin: 0.11, halo: 0.28, bright: 0.65, glow: 0.75 },
+  listening:  { color: 0xffb020, amp: 0.15, churn: 1.00, spin: 0.17, halo: 0.80, bright: 1.35, glow: 1.25 },
+  processing: { color: 0x2af5ff, amp: 0.13, churn: 1.90, spin: 0.34, halo: 0.52, bright: 0.95, glow: 1.15, cycle: true },
+  speaking:   { color: 0x2af5ff, amp: 0.19, churn: 1.35, spin: 0.24, halo: 0.72, bright: 1.45, glow: 1.35, voice: true },
+  error:      { color: 0xff3344, amp: 0.04, churn: 0.18, spin: 0.02, halo: 0.55, bright: 1.15, glow: 1.0 },
+};
+
+let stateName = 'idle';
+const target = { ...STATES.idle, colorObj: new THREE.Color(STATES.idle.color) };
+const cur = { amp: 0.09, churn: 0.55, spin: 0.11, halo: 0.28, bright: 0.65, glow: 0.75,
+              colorObj: new THREE.Color(STATES.idle.color) };
+let spinAngle = 0, bgGlow = 0.75;
+
+function setState(name){
+  if (!STATES[name]) return;
+  stateName = name;
+  const s = STATES[name];
+  Object.assign(target, s);
+  target.cycle = !!s.cycle;   // normalize flags so they don't leak between states
+  target.voice = !!s.voice;
+  target.colorObj = new THREE.Color(s.color);
+}
+
+// ── audio: real analyser + asymmetric smoothing + synthetic fallback ──
+const audio = { ctx: null, analyser: null, data: null, srcEl: null };
+let smLevel = 0, smBass = 0;
+
+function attachAudioElement(el){
+  try {
+    if (!audio.ctx) audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audio.ctx.createMediaElementSource(el);
+    audio.analyser = audio.ctx.createAnalyser();
+    audio.analyser.fftSize = 256;
+    audio.data = new Uint8Array(audio.analyser.frequencyBinCount);
+    src.connect(audio.analyser);
+    audio.analyser.connect(audio.ctx.destination); // keep it audible
+    audio.srcEl = el;
+  } catch(e){ /* fall back to synthetic */ }
+}
+
+function realLevels(){
+  if (!audio.analyser) return null;
+  audio.analyser.getByteFrequencyData(audio.data);
+  const n = audio.data.length;
+  let sum = 0, bass = 0, bassN = Math.max(1, Math.floor(n * 0.12));
+  for (let i = 0; i < n; i++) sum += audio.data[i];
+  for (let i = 0; i < bassN; i++) bass += audio.data[i];
+  const level = (sum / n) / 255;
+  if (level < 0.001) return null; // nothing playing → let synthetic take over
+  return { level: Math.min(level * 1.6, 1), bass: Math.min((bass / bassN) / 255 * 1.4, 1) };
+}
+
+function synthLevels(t){
+  if (stateName === 'speaking'){
+    const v = 0.28 + 0.42 * Math.abs(Math.sin(t*7.3) + 0.5*Math.sin(t*13.1) + 0.3*Math.sin(t*23.0));
+    return { level: Math.min(v, 1), bass: 0.3 + 0.4 * Math.abs(Math.sin(t*3.1)) };
+  }
+  if (stateName === 'listening'){
+    return { level: 0.16 + 0.10 * (0.5 + 0.5*Math.sin(t*2.2)), bass: 0.12 };
+  }
+  if (stateName === 'processing'){
+    return { level: 0.10 + 0.06*Math.sin(t*1.4), bass: 0.14 };
+  }
+  return { level: 0.05, bass: 0.05 };
+}
+
+function updateAudio(t){
+  const lv = realLevels() || synthLevels(t);
+  // asymmetric smoothing: jump up fast, ease down slowly
+  smLevel += (lv.level > smLevel ? 0.40 : 0.06) * (lv.level - smLevel);
+  smBass  += (lv.bass  > smBass  ? 0.40 : 0.06) * (lv.bass  - smBass);
+  orbUniforms.uLevel.value = smLevel;
+  orbUniforms.uBass.value  = smBass;
+}
+
+// ── demo driver: cycle the states so the scene is alive without a backend ──
+let demoOn = true, demoIdx = 0;
+const demoOrder = ['idle', 'listening', 'processing', 'speaking', 'idle'];
+let demoT = 0;
+function demo(on){ demoOn = on; }
+
+const EASE = 0.035; // ~1s settle
+function easeToward(t, dt){
+  if (demoOn){
+    demoT += dt;
+    if (demoT > 3.2){
+      demoT = 0; demoIdx = (demoIdx + 1) % demoOrder.length;
+      const ns = demoOrder[demoIdx];
+      setState(ns);
+      // show the reactions during the demo: dispatch an agent while thinking
+      if (ns === 'processing' && agentList.length){
+        const ag = agentList[Math.floor(Math.random() * agentList.length)];
+        dispatch(ag.id); setWorking(ag.id, true);
+      } else {
+        agentList.forEach(a => (a.working = false));
+      }
+    }
+  }
+  // processing slowly cycles cyan <-> purple
+  if (target.cycle){
+    target.colorObj.copy(CYAN).lerp(PURPLE, 0.5 + 0.5 * Math.sin(t * 0.6));
+  }
+  cur.amp    += (target.amp    - cur.amp)    * EASE;
+  cur.churn  += (target.churn  - cur.churn)  * EASE;
+  cur.spin   += (target.spin   - cur.spin)   * EASE;
+  cur.halo   += (target.halo   - cur.halo)   * EASE;
+  cur.bright += (target.bright - cur.bright) * EASE;
+  cur.glow   += (target.glow   - cur.glow)   * EASE;
+  cur.colorObj.lerp(target.colorObj, EASE);
+
+  orbUniforms.uColor.value.copy(cur.colorObj);
+  orbUniforms.uAmp.value    = cur.amp;
+  orbUniforms.uChurn.value  = cur.churn;
+  orbUniforms.uBright.value = cur.bright;
+  haloMat.color.copy(cur.colorObj);
+  haloMat.opacity = cur.halo;
+  bgGlow = cur.glow;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tier 4 — the floating sub-agent constellation.
+   Each of Trillion's capability groups orbits the orb on its own
+   tilted path, drawn as a generated glowing avatar with a DOM
+   label that tracks it and fades as it swings behind the orb.
+   ───────────────────────────────────────────────────────────── */
+const AGENTS = [
+  { id:'scheduler', name:'Scheduler', spec:'reminders & tasks', color:0xffb020, glyph:'⏰',
+    radius:1.80, speed: 0.150, phase:0.2, tilt: 0.55, yaw: 0.3 },
+  { id:'librarian', name:'Librarian', spec:'notes & memory',    color:0x22d3a8, glyph:'\u{1F4D6}',
+    radius:2.05, speed:-0.120, phase:1.9, tilt:-0.85, yaw:-0.5 },
+  { id:'scribe',    name:'Scribe',    spec:'message drafting',  color:0x8a5cff, glyph:'✎',
+    radius:1.92, speed: 0.110, phase:3.4, tilt: 0.95, yaw: 0.8 },
+  { id:'scout',     name:'Scout',     spec:'web search',        color:0x2af5ff, glyph:'\u{1F50D}',
+    radius:2.18, speed:-0.135, phase:4.9, tilt:-0.50, yaw:-0.2 },
+];
+
+function makeAvatarTexture(ag){
+  const s = 128, cv = document.createElement('canvas'); cv.width = cv.height = s;
+  const g = cv.getContext('2d');
+  const col = new THREE.Color(ag.color);
+  const H = v => Math.round(v * 255);
+  const cr = H(col.r), cg = H(col.g), cb = H(col.b);
+  const cx = s/2, cy = s/2, R = s*0.44;
+  const grad = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+  grad.addColorStop(0.00, `rgba(${H(col.r*0.18)},${H(col.g*0.18)},${H(col.b*0.18)},0.95)`);
+  grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},0.85)`);
+  grad.addColorStop(0.88, `rgba(${cr},${cg},${cb},0.95)`);
+  grad.addColorStop(1.00, `rgba(${cr},${cg},${cb},0.0)`);
+  g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI*2); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 2;
+  g.beginPath(); g.arc(cx, cy, R*0.9, 0, Math.PI*2); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  g.font = `${Math.round(s*0.34)}px -apple-system,"Segoe UI",sans-serif`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(ag.glyph, cx, cy + 2);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  return tex;
+}
+
+const agentList = [];
+const labelsEl = document.getElementById('labels');
+if (!IS_MOBILE){
+  for (const def of AGENTS){
+    const ag = { ...def, pos: new THREE.Vector3(), frontOp: 1, ready: false,
+                 pulse: Math.random()*6.283, working: false, flare: 0 };
+    // soft additive glow behind the avatar
+    const gmat = new THREE.SpriteMaterial({ map: makeHaloTexture(), color: new THREE.Color(ag.color),
+      transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0.5 });
+    ag.glow = new THREE.Sprite(gmat); ag.glow.scale.set(1.15, 1.15, 1);
+    ag.glow.renderOrder = 5; scene.add(ag.glow);
+    ag.glowBase = 0.5;
+    // the avatar face
+    const amat = new THREE.SpriteMaterial({ map: makeAvatarTexture(ag),
+      transparent: true, depthWrite: false, depthTest: false });
+    ag.sprite = new THREE.Sprite(amat); ag.sprite.scale.set(0.5, 0.5, 1);
+    ag.sprite.renderOrder = 6; scene.add(ag.sprite);
+    // DOM label
+    const div = document.createElement('div');
+    div.className = 'agent-label';
+    div.innerHTML = `<div class="nm"></div><div class="sp"></div>`;
+    div.querySelector('.nm').textContent = ag.name;
+    div.querySelector('.nm').style.color = '#' + new THREE.Color(ag.color).getHexString();
+    div.querySelector('.sp').textContent = ag.spec;
+    labelsEl.appendChild(div); ag.label = div;
+    agentList.push(ag);
+  }
+}
+
+const _v = new THREE.Vector3();
+function updateAgents(t){
+  if (!agentList.length) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  for (const ag of agentList){
+    const a = ag.phase + (REDUCED ? 0 : t * ag.speed);   // hold still under reduced-motion
+    let x = Math.cos(a) * ag.radius, y = Math.sin(a) * ag.radius, z = 0;
+    // tilt about X, then yaw about Y — puts each orbit in its own plane
+    const ct = Math.cos(ag.tilt), st = Math.sin(ag.tilt);
+    let y2 = y*ct - z*st, z2 = y*st + z*ct;
+    const cyw = Math.cos(ag.yaw), syw = Math.sin(ag.yaw);
+    let x3 = x*cyw + z2*syw, z3 = -x*syw + z2*cyw;
+    ag.pos.set(x3, y2, z3);
+    ag.sprite.position.copy(ag.pos);
+    ag.glow.position.copy(ag.pos);
+
+    // dispatch flare (0→1→0) and steady working pulse
+    if (ag.dispatchActive){
+      const e = (t - ag.dispatchT0) / ag.dispatchDur;
+      if (e >= 1){ ag.dispatchActive = false; ag.flare = 0; }
+      else ag.flare = Math.sin(e * Math.PI);
+      // sonar ping at the agent at the peak of the beam
+      if (!ag.pingDone && t >= ag.pingAt){ spawnPing(ag.pos, ag.color, 1.7, 0.85); ag.pingDone = true; }
+    }
+    const work = ag.working ? (0.5 + 0.5*Math.sin(t*4.5)) : 0;
+
+    // depth cue: 1 in front (toward camera, z>0), fades toward the back
+    const front = THREE.MathUtils.smoothstep(z3, -ag.radius*0.7, ag.radius*0.35);
+    ag.frontOp = 0.30 + 0.70 * front;
+    const breathe = 0.82 + 0.18 * Math.sin(t*1.3 + ag.pulse);
+
+    const sc = 0.5 * (1 + 0.55*ag.flare + 0.12*work);
+    ag.sprite.scale.set(sc, sc, 1);
+    ag.glow.scale.setScalar(1.15 * (1 + 0.4*ag.flare + 0.22*work));
+    ag.sprite.material.opacity = Math.min(ag.frontOp + ag.flare*0.5, 1);
+    ag.glow.material.opacity = (ag.glowBase*breathe + ag.flare*0.65 + work*0.5) * Math.max(ag.frontOp, 0.4);
+
+    // project to screen for the DOM label
+    _v.copy(ag.pos).project(camera);
+    const sx = (_v.x * 0.5 + 0.5) * w;
+    const sy = (-_v.y * 0.5 + 0.5) * h;
+    ag.label.style.left = sx.toFixed(1) + 'px';
+    ag.label.style.top  = (sy + 24).toFixed(1) + 'px';
+    // hide when directly behind the orb; otherwise fade with depth
+    const nearCenter = Math.hypot(_v.x, _v.y) < 0.17;
+    let lop = front;
+    if (z3 < 0 && nearCenter) lop = 0;
+    ag.label.style.opacity = ag.ready ? lop.toFixed(3) : '0';
+    ag.label.style.zIndex = String(1000 + Math.round(z3 * 100));
+    ag.ready = true; // only revealed after first real position is known
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Tier 5 — reactions: dispatch beams, sonar pings, working
+   pulses, and the processing "helix" rings around the orb.
+   ───────────────────────────────────────────────────────────── */
+
+// expanding ring "ping" (sonar) — an annulus sprite that scales up and fades
+function makeRingTexture(){
+  const s = 128, cv = document.createElement('canvas'); cv.width = cv.height = s;
+  const g = cv.getContext('2d'); g.translate(s/2, s/2);
+  const grad = g.createRadialGradient(0, 0, s*0.30, 0, 0, s*0.5);
+  grad.addColorStop(0.0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.78,'rgba(255,255,255,0.95)');
+  grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.beginPath(); g.arc(0, 0, s*0.5, 0, Math.PI*2); g.fill();
+  return new THREE.CanvasTexture(cv);
+}
+const RING_TEX = makeRingTexture();
+
+const pings = [];
+function spawnPing(pos, color, maxScale, dur){
+  const mat = new THREE.SpriteMaterial({ map: RING_TEX, color: new THREE.Color(color),
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0.9 });
+  const sp = new THREE.Sprite(mat); sp.position.copy(pos); sp.scale.setScalar(0.15);
+  sp.renderOrder = 7; scene.add(sp);
+  pings.push({ sp, mat, t0: clock.getElapsedTime(), dur, maxScale });
+}
+function updatePings(t){
+  for (let i = pings.length - 1; i >= 0; i--){
+    const p = pings[i], e = (t - p.t0) / p.dur;
+    if (e >= 1){ scene.remove(p.sp); p.mat.dispose(); pings.splice(i, 1); continue; }
+    p.sp.scale.setScalar(0.15 + (p.maxScale - 0.15) * (1 - Math.pow(1 - e, 2)));
+    p.mat.opacity = (1 - e) * 0.9;
+  }
+}
+
+// dispatch beam — a thick glowing line from the orb out to the agent and back
+const beams = [];
+const _yUp = new THREE.Vector3(0, 1, 0);
+function fireBeam(ag){
+  const geo = new THREE.CylinderGeometry(0.028, 0.028, 1, 10, 1, true);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uHead: { value: 0 }, uAlpha: { value: 1 }, uColor: { value: new THREE.Color(ag.color) } },
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    vertexShader: `varying float vY; void main(){ vY = uv.y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `varying float vY; uniform float uHead, uAlpha; uniform vec3 uColor;
+      void main(){ float d = abs(vY - uHead); float p = smoothstep(0.22, 0.0, d);
+        float core = 0.16; gl_FragColor = vec4(uColor*(core + p*2.2), (core*0.5 + p)*uAlpha); }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = 4; scene.add(mesh);
+  beams.push({ mesh, mat, ag, t0: clock.getElapsedTime(), dur: 2.2 });
+}
+function updateBeams(t){
+  for (let i = beams.length - 1; i >= 0; i--){
+    const b = beams[i], e = (t - b.t0) / b.dur;
+    if (e >= 1){ scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mat.dispose(); beams.splice(i, 1); continue; }
+    const pos = b.ag.pos, len = pos.length() || 0.001;
+    b.mesh.position.copy(pos).multiplyScalar(0.5);
+    b.mesh.scale.set(1, len, 1);
+    b.mesh.quaternion.setFromUnitVectors(_yUp, pos.clone().normalize());
+    b.mat.uniforms.uHead.value = e < 0.5 ? e*2 : 1 - (e-0.5)*2;   // races out then back
+    b.mat.uniforms.uAlpha.value = Math.sin(e * Math.PI);           // fade in/out, peak middle
+  }
+}
+
+function dispatch(id){
+  const ag = agentList.find(a => a.id === id); if (!ag) return;
+  const now = clock.getElapsedTime();
+  ag.dispatchActive = true; ag.dispatchT0 = now; ag.dispatchDur = 2.2;
+  ag.pingAt = now + 1.1; ag.pingDone = false;
+  fireBeam(ag);
+  spawnPing(new THREE.Vector3(0, 0, 0), ACCENT, 1.1, 0.8);   // "sending" pulse at the orb
+}
+function setWorking(id, on){ const ag = agentList.find(a => a.id === id); if (ag) ag.working = !!on; }
+
+// processing "helix" — thin glowing rings just outside the orb
+const rings = [];
+let ringVis = 0;
+(function buildRings(){
+  const defs = [
+    { r: 1.34, tube: 0.010, tilt: 0.5,  yaw: 0.2,  spin: 0.50, ps: 0.22 },
+    { r: 1.48, tube: 0.010, tilt: -0.9, yaw: 0.8,  spin: -0.36, ps: -0.16 },
+    { r: 1.60, tube: 0.009, tilt: 1.3,  yaw: -0.5, spin: 0.30, ps: 0.28 },
+  ];
+  for (const d of defs){
+    const geo = new THREE.TorusGeometry(d.r, d.tube, 8, 150);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uVis: { value: 0 }, uColor: { value: new THREE.Color(0x2af5ff) }, uPS: { value: d.ps } },
+      transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `varying vec2 vUv; uniform float uTime, uVis, uPS; uniform vec3 uColor;
+        void main(){ float d = abs(fract(vUv.x*2.0 - uTime*uPS)); d = min(d, 1.0-d);
+          float p = smoothstep(0.05, 0.0, d); float base = 0.28;
+          gl_FragColor = vec4(uColor*(base + p*1.9), (base*0.5 + p)*uVis); }`,
+    });
+    const mesh = new THREE.Mesh(geo, mat); mesh.rotation.set(d.tilt, d.yaw, 0);
+    mesh.renderOrder = 3; scene.add(mesh);
+    rings.push({ mesh, mat, spin: d.spin });
+  }
+})();
+function updateRings(t, dt){
+  ringVis += ((stateName === 'processing' ? 1 : 0) - ringVis) * 0.04;
+  const drift = 0.5 + 0.5 * Math.sin(t * 0.5);
+  const rc = new THREE.Color(0x2af5ff).lerp(new THREE.Color(0x8a5cff), drift);
+  for (const r of rings){
+    r.mesh.rotation.z += r.spin * dt;
+    r.mat.uniforms.uTime.value = t;
+    r.mat.uniforms.uVis.value = ringVis;
+    r.mat.uniforms.uColor.value.copy(rc);
+  }
+}
+
+// ── animation loop ──
+let last = 0, running = true, perfMode = false, bgFrame = 0;
+function animate(){
+  if (!running) return;
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const dt = Math.min(t - last, 0.1); last = t;
+
+  easeToward(t, dt);
+  updateAudio(t);
+  // performance mode: draw the (slow) background every other frame
+  bgFrame++;
+  if (!perfMode || (bgFrame & 1)) renderBackground(t);
+
+  orbUniforms.uTime.value = t;
+  spinAngle += cur.spin * dt;
+  orbGroup.rotation.y = spinAngle;
+  orbGroup.rotation.x = Math.sin(t * 0.12) * 0.18;
+  updateRings(t, dt);
+  updateAgents(t);
+  updateBeams(t);
+  updatePings(t);
+  renderer.render(scene, camera);
+}
+animate();
+
+window.TRILLION = window.TRILLION || {};
+window.TRILLION.agents = agentList;
+window.TRILLION.getAgent = (id) => agentList.find(a => a.id === id);
+window.TRILLION.dispatch = dispatch;
+window.TRILLION.setWorking = setWorking;
+
+/* ─────────────────────────────────────────────────────────────
+   Tier 6 — wiring to Trillion, chat/voice overlay, performance,
+   accessibility. Real tool events light up the matching agent;
+   real ElevenLabs audio drives the orb while it speaks.
+   ───────────────────────────────────────────────────────────── */
+const TOOL_AGENT = {
+  add_reminder:'scheduler', list_reminders:'scheduler', complete_reminder:'scheduler', delete_reminder:'scheduler',
+  search_notes:'librarian', list_notes:'librarian', read_note:'librarian',
+  remember_fact:'librarian', update_memory:'librarian', forget_fact:'librarian', list_memories:'librarian',
+  draft_message:'scribe', web_search:'scout',
+};
+
+const msgEl = document.getElementById('msg');
+const sendBtn = document.getElementById('send');
+const micBtn = document.getElementById('mic');
+const capEl = document.getElementById('caption');
+const busy = new Set();
+let ttsAudio = null;
+
+function showCaption(txt){ capEl.textContent = txt || ''; capEl.style.opacity = txt ? '1' : '0'; }
+function clearBusy(){ busy.forEach(id => setWorking(id, false)); busy.clear(); }
+function resumeAudioCtx(){ try { if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume(); } catch(e){} }
+
+async function speakReal(text){
+  if (!text.trim()){ setState('idle'); return; }
+  setState('speaking');
+  try {
+    const r = await fetch('/speak', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text }) });
+    if (r.ok){
+      const url = URL.createObjectURL(await r.blob());
+      if (ttsAudio){ try { ttsAudio.pause(); } catch(e){} }
+      ttsAudio = new Audio(url);
+      attachAudioElement(ttsAudio);      // real FFT levels drive the orb's surface
+      resumeAudioCtx();
+      ttsAudio.onended = () => { URL.revokeObjectURL(url); setState('idle'); };
+      await ttsAudio.play();
+      return;
+    }
+  } catch(e){}
+  // fallback: browser speech (orb falls back to synthetic motion automatically)
+  if ('speechSynthesis' in window){
+    const u = new SpeechSynthesisUtterance(text); u.rate = 1.05;
+    u.onend = () => setState('idle'); speechSynthesis.speak(u);
+  } else setState('idle');
+}
+
+async function ask(text){
+  text = (text || '').trim(); if (!text) return;
+  demo(false); resumeAudioCtx(); showCaption('');
+  setState('processing');
+  let reply = '', signoff = false;
+  try {
+    const resp = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ message:text }) });
+    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    outer: while (true){
+      const { done, value } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream:true }); const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines){
+        if (!line.startsWith('data: ')) continue;
+        const p = line.slice(6); if (p === '[DONE]') break outer;
+        try {
+          const o = JSON.parse(p);
+          if (o.signoff){ signoff = true; break outer; }
+          if (o.confirm){ showConfirm(o.confirm); continue; }
+          if (o.tool){ const id = TOOL_AGENT[o.tool]; if (id){ dispatch(id); setWorking(id, true); busy.add(id); } continue; }
+          if (o.chunk != null){ reply += o.chunk; showCaption(reply); }
+        } catch(e){}
+      }
+    }
+  } catch(e){ showCaption('Connection error — is the server running?'); }
+  clearBusy();
+  if (signoff){ setState('idle'); showCaption(''); return; }   // let a goodbye end in silence
+  await speakReal(reply);
+}
+
+sendBtn.addEventListener('click', () => { const v = msgEl.value; msgEl.value = ''; ask(v); });
+msgEl.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); const v = msgEl.value; msgEl.value = ''; ask(v); } });
+
+// voice input
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR){
+  const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
+  let finalT = '';
+  rec.onstart = () => { micBtn.classList.add('on'); demo(false); setState('listening'); finalT = ''; };
+  rec.onresult = e => { let it = ''; finalT = ''; for (const r of e.results){ if (r.isFinal) finalT += r[0].transcript; else it += r[0].transcript; } msgEl.value = finalT || it; };
+  rec.onend = () => { micBtn.classList.remove('on'); if (finalT.trim()){ const v = msgEl.value; msgEl.value = ''; ask(v); } else setState('idle'); };
+  rec.onerror = () => { micBtn.classList.remove('on'); setState('idle'); };
+  micBtn.addEventListener('click', () => {
+    resumeAudioCtx();
+    if (micBtn.classList.contains('on')) rec.stop();
+    else { if (ttsAudio){ try { ttsAudio.pause(); } catch(e){} } msgEl.value = ''; rec.start(); }
+  });
+} else { micBtn.style.opacity = '.4'; micBtn.title = 'Voice not supported here'; }
+
+// performance mode: half-res background, drawn every other frame
+const perfBtn = document.getElementById('perf');
+perfBtn.addEventListener('click', () => {
+  perfMode = !perfMode; perfBtn.classList.toggle('on', perfMode);
+  bgRenderer.setPixelRatio(perfMode ? Math.min(devicePixelRatio, 1) * 0.75 : Math.min(devicePixelRatio, 2));
+});
+
+// pause rendering when the tab is hidden; resume cleanly (no time jump)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden){ running = false; }
+  else if (!running){ running = true; last = clock.getElapsedTime(); requestAnimationFrame(animate); }
+});
+
+// add a new agent to the constellation at runtime (generates its avatar + label)
+function addAgent(def){
+  if (IS_MOBILE || !def || !def.id) return null;
+  const ag = { id:def.id, name:def.name || def.id, spec:def.spec || '', color:def.color || 0x2af5ff,
+    glyph:def.glyph || (def.name ? def.name[0] : '•'), radius:def.radius || 2.0, speed:def.speed || 0.13,
+    phase:(def.phase != null ? def.phase : Math.random()*6.283), tilt:(def.tilt != null ? def.tilt : 0.6),
+    yaw:(def.yaw != null ? def.yaw : 0), pos:new THREE.Vector3(), frontOp:1, ready:false,
+    pulse:Math.random()*6.283, working:false, flare:0 };
+  const gmat = new THREE.SpriteMaterial({ map: makeHaloTexture(), color:new THREE.Color(ag.color),
+    transparent:true, depthWrite:false, depthTest:false, blending:THREE.AdditiveBlending, opacity:0.5 });
+  ag.glow = new THREE.Sprite(gmat); ag.glow.scale.set(1.15, 1.15, 1); ag.glow.renderOrder = 5; scene.add(ag.glow); ag.glowBase = 0.5;
+  const amat = new THREE.SpriteMaterial({ map: makeAvatarTexture(ag), transparent:true, depthWrite:false, depthTest:false });
+  ag.sprite = new THREE.Sprite(amat); ag.sprite.scale.set(0.5, 0.5, 1); ag.sprite.renderOrder = 6; scene.add(ag.sprite);
+  const div = document.createElement('div'); div.className = 'agent-label';
+  div.innerHTML = `<div class="nm"></div><div class="sp"></div>`;
+  div.querySelector('.nm').textContent = ag.name;
+  div.querySelector('.nm').style.color = '#' + new THREE.Color(ag.color).getHexString();
+  div.querySelector('.sp').textContent = ag.spec;
+  labelsEl.appendChild(div); ag.label = div;
+  agentList.push(ag); return ag;
+}
+
+// gated-action confirmation modal
+const confirmEl = document.getElementById('confirm');
+function showConfirm(c){
+  document.getElementById('confirm-title').textContent = `Allow “${c.name}”?`;
+  const detail = Object.entries(c.input || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+  document.getElementById('confirm-detail').textContent = detail || '(no details)';
+  confirmEl.style.display = 'flex';
+}
+function answerConfirm(ok){
+  confirmEl.style.display = 'none';
+  fetch('/confirm', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ approved: ok }) });
+}
+document.getElementById('confirm-ok').addEventListener('click', () => answerConfirm(true));
+document.getElementById('confirm-deny').addEventListener('click', () => answerConfirm(false));
+
+// security shield — surfaces posture drift at a glance
+const shieldEl = document.getElementById('shield');
+const sheetEl = document.getElementById('shield-sheet');
+const _scoreColor = { green: '#33e0a0', amber: '#ffb84d', red: '#ff5f7a' };
+function renderShieldSheet(s){
+  const rows = s.signals.map(sg =>
+    `<div class="sig sev-${sg.severity}"><span class="lab">${sg.label}</span>` +
+    `<span class="val">${sg.value}${sg.delta ? ' (' + sg.delta + ')' : ''}</span></div>`).join('');
+  sheetEl.innerHTML =
+    `<h4><span>Security posture</span><span style="color:${_scoreColor[s.color]}">${s.score}/100</span></h4>` +
+    rows + `<button id="shield-run">Run audit now</button>`;
+  document.getElementById('shield-run').addEventListener('click', async () => {
+    try { await fetch('/api/security/audit', { method: 'POST' }); } catch(e){}
+    refreshShield();
+  });
+}
+async function refreshShield(){
+  try {
+    const r = await fetch('/api/security/status');
+    const s = await r.json();
+    shieldEl.className = s.color;
+    renderShieldSheet(s);
+  } catch(e){}
+}
+shieldEl.addEventListener('click', () => {
+  sheetEl.style.display = sheetEl.style.display === 'block' ? 'none' : 'block';
+});
+refreshShield();
+setInterval(refreshShield, 300000); // re-check every 5 min
+
+window.TRILLION.ask = ask;
+window.TRILLION.addAgent = addAgent;
+window.TRILLION.showConfirm = showConfirm;
+window.TRILLION.perf = (on) => { perfMode = !!on; perfBtn.classList.toggle('on', perfMode);
+  bgRenderer.setPixelRatio(perfMode ? Math.min(devicePixelRatio, 1) * 0.75 : Math.min(devicePixelRatio, 2)); };
+
+// public API
+window.TRILLION = window.TRILLION || {};
+window.TRILLION.setState = setState;
+window.TRILLION.attachAudioElement = attachAudioElement;
+window.TRILLION.demo = demo;
+window.TRILLION.getState = () => stateName;
+
+// ── resize ──
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  netCam.aspect = w / h; netCam.updateProjectionMatrix();
+  bgRenderer.setSize(w, h);
+  skyUniforms.uAspect.value = w / h;
+});
+
+// expose for later tiers / console testing
+window.TRILLION = window.TRILLION || {};
+Object.assign(window.TRILLION, { scene, camera, renderer, orb, orbGroup, orbUniforms, halo, haloMat, ACCENT });
+</script>
+</body>
+</html>

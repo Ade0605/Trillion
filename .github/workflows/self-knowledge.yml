@@ -1,0 +1,29 @@
+name: self-knowledge
+
+# Drift check on the self-knowledge doc: stale references (paths/symbols that no
+# longer resolve) and contradictions between hand-written prose and the live code.
+# Inert until this repo is pushed to GitHub. Gates merges — a finding fails the job.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history so the recent-activity block renders
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The full set, not a hand-picked subset: build_registry() assembles optional
+      # tools behind try/except, so a missing dep doesn't error — it silently yields
+      # a short registry. The checker notices and withholds count findings rather
+      # than flag correct prose, but that trades a real check for a quiet pass.
+      - run: pip install -r requirements.txt
+      - name: Self-knowledge drift check
+        run: python -m trillion.self_knowledge --check --strict
+      - name: Unit tests
+        run: python -m unittest trillion.self_knowledge.tests_self_knowledge

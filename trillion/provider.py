@@ -23,14 +23,59 @@ def _get_client() -> anthropic.Anthropic:
     return _client
 
 
+_CACHE = {"type": "ephemeral"}
+
+
+def _cache_system(system):
+    """Ensure the stable system prefix carries a cache breakpoint."""
+    if isinstance(system, str):
+        return [{"type": "text", "text": system, "cache_control": _CACHE}]
+    return system  # agent already marks the stable block
+
+
+def _cache_tools(tools):
+    """Cache the (stable) tool definitions by marking the last one."""
+    if not tools:
+        return tools
+    marked = [dict(t) for t in tools]
+    marked[-1] = {**marked[-1], "cache_control": _CACHE}
+    return marked
+
+
+def _cache_messages(messages):
+    """Cache the conversation prefix by marking the last block of the last
+    message, so each deeper turn reuses everything before it instead of
+    re-reading the whole growing history."""
+    if not messages:
+        return messages
+    out = list(messages)
+    last = dict(out[-1])
+    content = last.get("content")
+    if isinstance(content, str):
+        last["content"] = [{"type": "text", "text": content, "cache_control": _CACHE}]
+    elif isinstance(content, list) and content:
+        blocks = [dict(b) if isinstance(b, dict) else b for b in content]
+        if isinstance(blocks[-1], dict):
+            blocks[-1] = {**blocks[-1], "cache_control": _CACHE}
+        last["content"] = blocks
+    else:
+        return messages
+    out[-1] = last
+    return out
+
+
 def send_turn(
     messages: list[dict],
-    system: str,
+    system,
     model: str,
     tools: list[dict] | None = None,
 ) -> Generator[str | dict, None, None]:
     """
     Stream one conversation turn.
+
+    ``system`` may be a plain string or a list of content blocks (the agent
+    passes blocks so the stable prefix is cached). Prompt caching is applied to
+    the system prefix, the tool definitions, and the conversation prefix.
 
     Yields:
       - str chunks for plain text as they arrive
@@ -43,11 +88,11 @@ def send_turn(
         kwargs: dict = dict(
             model=model,
             max_tokens=4096,
-            system=system,
-            messages=messages,
+            system=_cache_system(system),
+            messages=_cache_messages(messages),
         )
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = _cache_tools(tools)
 
         with _get_client().messages.stream(**kwargs) as stream:
             current_tool: dict | None = None
@@ -79,6 +124,18 @@ def send_turn(
                         yield {"tool_use": current_tool}
                         current_tool = None
                         current_tool_json = ""
+
+            # Cache/usage stats — consumers that don't care simply ignore this.
+            try:
+                u = stream.get_final_message().usage
+                yield {"usage": {
+                    "input": getattr(u, "input_tokens", 0),
+                    "cache_read": getattr(u, "cache_read_input_tokens", 0) or 0,
+                    "cache_write": getattr(u, "cache_creation_input_tokens", 0) or 0,
+                    "output": getattr(u, "output_tokens", 0),
+                }}
+            except Exception:
+                pass
 
     except anthropic.APIConnectionError:
         yield {"error": "Could not reach Anthropic — check your internet connection."}

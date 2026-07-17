@@ -1,0 +1,18 @@
+title = "Trillion gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "trillion-bearer-token"
+description = "Trillion bearer token"
+regex = '''(?i)TRILLION_TOKEN\s*=\s*['"]?[A-Za-z0-9_\-]{16,}'''
+
+[allowlist]
+description = "Files that describe secret shapes (fixtures / redaction patterns), not real secrets"
+paths = [
+  '''trillion/security/log_redact\.py''',
+  '''trillion/security/injection_gate\.py''',
+  '''trillion/security/tests_security\.py''',
+  '''\.gitleaks\.toml''',
+]
