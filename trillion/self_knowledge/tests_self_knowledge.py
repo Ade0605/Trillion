@@ -136,6 +136,16 @@ class DriftTests(unittest.TestCase):
                "<!-- AUTO-END: capabilities -->\n")
         self.assertEqual(drift_check(doc), [])
 
+    def test_allowlisted_missing_file_is_not_flagged(self):
+        # Runtime-generated, git-ignored paths (e.g. data/factory_agents.json)
+        # are absent in a fresh checkout / CI. Listed in the allowlist, a
+        # reference to one must not fail the path-existence check.
+        doc = "## Identity\nVerify against `data/ghost_runtime_file.json`.\n"
+        self.assertTrue(drift_check(doc))  # flagged without the allowlist
+        with mock.patch.object(drift_module, "load_allowlist",
+                               lambda: {"data/ghost_runtime_file.json"}):
+            self.assertEqual(drift_check(doc), [])
+
 
 # --------------------------------------------------------------------------- #
 # Contradiction checks

@@ -4,3 +4,8 @@
 
 # Web routes referenced in prose (not files on disk):
 /speak
+
+# Runtime-generated, git-ignored data files the prose points readers to. They
+# exist on a running host but never in a fresh checkout (CI, clone), so the
+# path-existence check would false-positive on them.
+data/factory_agents.json
