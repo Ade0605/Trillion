@@ -6,6 +6,11 @@ pyyaml>=6.0
 # Tier 2
 requests>=2.31.0
 
+# Calendar (Yahoo over CalDAV, read-only)
+caldav>=3.2.0
+icalendar>=7.0.0
+recurring-ical-events>=3.8.0
+
 # Tier 3 (voice) — install when ready for Tier 3
 # deepgram-sdk>=3.0.0
 # elevenlabs>=1.0.0

@@ -140,4 +140,9 @@ def build_registry() -> ToolRegistry:
         register_factory_tools(r)
     except Exception:
         pass  # agent factory optional; never break core tools
+    try:
+        from .calendar_tool import register as register_calendar
+        register_calendar(r)
+    except Exception:
+        pass  # calendar optional; never break core tools
     return r
