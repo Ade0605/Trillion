@@ -34,8 +34,10 @@ class LogRedactTests(unittest.TestCase):
         self.assertTrue(mask("card 4111 1111 1111 1111").endswith("1111"))
 
     def test_email_keeps_domain_masks_local(self):
-        self.assertIn("@gmail.com", mask("reach me at bamidele05@gmail.com ok"))
-        self.assertNotIn("bamidele05", mask("bamidele05@gmail.com"))
+        # Fixture address is deliberately fake — this repo is public, so no real
+        # address goes in a test file.
+        self.assertIn("@gmail.com", mask("reach me at testuser42@gmail.com ok"))
+        self.assertNotIn("testuser42", mask("testuser42@gmail.com"))
 
     def test_clean_text_untouched(self):
         self.assertEqual(mask("hello, three reminders due today"), "hello, three reminders due today")
