@@ -72,7 +72,18 @@ def _principal():
             "YAHOO_CALDAV_APP_PASSWORD in .env (use a Yahoo app password)."
         )
     try:
-        client = caldav.DAVClient(url=url, username=user, password=pw)
+        # Yahoo rejects the unauthenticated probe instead of returning a usable
+        # challenge, and caldav 3.x only sends Basic auth *after* a challenge —
+        # so username=/password= alone fails with AuthorizationError even when
+        # the credentials are valid. Pass an explicit auth object so the header
+        # goes out preemptively on the first request.
+        try:
+            from niquests.auth import HTTPBasicAuth
+            client = caldav.DAVClient(url=url, auth=HTTPBasicAuth(user, pw))
+        except ImportError:
+            import base64
+            token = base64.b64encode(f"{user}:{pw}".encode()).decode()
+            client = caldav.DAVClient(url=url, headers={"Authorization": "Basic " + token})
         return client.principal()
     except Exception as e:
         # Never echo the password; surface only the failure class.

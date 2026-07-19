@@ -92,6 +92,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-19 | `04ecaa3` | chore: use a fake email in the masking test fixture |
 | 2026-07-19 | `0fd3038` | feat: read Yahoo calendar and speak a daily brief |
 | 2026-07-19 | `ba6389f` | chore: refresh self-knowledge, ignore .jcode, add CLAUDE.md |
 | 2026-07-17 | `01ae9d0` | Bump CI actions to Node 24 majors |
