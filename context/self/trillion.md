@@ -50,6 +50,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `dispatch_to_notes-summarizer` | Dispatch a task to the 'Notes Summarizer' sub-agent (Local Note Summarization & Digest Generation Agent). | no |
 | `draft_message` | Compose a draft message or email for the user to review. | yes |
 | `forget_fact` | Remove a stored memory that is wrong or no longer relevant, by its id. | no |
+| `list_calendar_events` | Look at the user's calendar. | no |
 | `list_memories` | List all memories currently stored about the user. | no |
 | `list_notes` | List all note files available in the notes directory. | no |
 | `list_reminders` | List pending (or all) reminders. | no |
@@ -60,7 +61,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `update_memory` | Correct or update a previously stored memory by its id. | no |
 | `web_search` | Search the web for current information, facts, definitions, or news. | yes |
 
-_16 tools registered._
+_17 tools registered._
 <!-- AUTO-END: capabilities -->
 
 ## Integrations
@@ -91,6 +92,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-17 | `01ae9d0` | Bump CI actions to Node 24 majors |
 | 2026-07-17 | `b63e5c4` | Allowlist git-ignored runtime path so CI drift check passes |
 | 2026-07-17 | `715bae7` | Refresh self-knowledge recent-activity block |
 | 2026-07-17 | `3594dea` | Add contradiction checks to the self-knowledge drift checker |
