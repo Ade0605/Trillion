@@ -72,6 +72,7 @@ _17 tools registered._
 | Anthropic (Claude) | The brain — model `claude-sonnet-4-6` | key present |
 | Deepgram | Speech-to-text (native voice REPL) | key present |
 | ElevenLabs | Text-to-speech — voice `cgSgspJ2msm6clMCkdW9`, model `eleven_turbo_v2_5` | key present |
+| Yahoo Calendar | Read-only calendar over CalDAV | key present |
 
 _Keys live in `.env`; the browser interface falls back to the browser's own speech synthesis when ElevenLabs is unavailable._
 <!-- AUTO-END: integrations -->
@@ -92,6 +93,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-19 | `d2c7c47` | fix: send Basic auth preemptively to Yahoo CalDAV |
 | 2026-07-19 | `04ecaa3` | chore: use a fake email in the masking test fixture |
 | 2026-07-19 | `0fd3038` | feat: read Yahoo calendar and speak a daily brief |
 | 2026-07-19 | `ba6389f` | chore: refresh self-knowledge, ignore .jcode, add CLAUDE.md |
@@ -120,6 +122,28 @@ Trillion is no longer a single agent — it can mint specialists on demand.
   (Scout, Scribe, Librarian, Scheduler) plus live Factory agents, which flare
   when dispatched.
 
+## Calendar and the daily brief
+
+Trillion reads the user's Yahoo calendar and speaks a brief each morning.
+
+- **Calendar** (`list_calendar_events`, `trillion/calendar_yahoo.py`): Yahoo over
+  CalDAV, **read-only**. Trillion can report what's on but cannot create, move,
+  or delete events — asking it to change the calendar is a capability it does
+  not have. Recurring events are expanded locally (Yahoo's server-side expansion
+  is unreliable) and normalised to local time. The last good read is cached, so
+  a Yahoo outage returns stale data rather than a wrongly-empty day.
+- **Auth:** an *app password* in `.env` (`YAHOO_CALDAV_USER`,
+  `YAHOO_CALDAV_APP_PASSWORD`) — a normal Yahoo password is rejected. The
+  `caldav` library must send Basic auth preemptively; Yahoo refuses the
+  unauthenticated probe instead of issuing a usable challenge.
+- **Spoken morning brief** (`scripts/morning_brief.py`): greeting, date,
+  today's calendar, then pending reminders — read aloud through ElevenLabs.
+  Registered as the Windows scheduled task "Trillion Morning Brief", daily at
+  09:00. It runs unattended precisely because browsers block autoplay and cannot
+  speak from a background tab, so the browser interfaces cannot do this job.
+- The same calendar text also appears in the `daily_brief` heartbeat check. A
+  calendar failure there never suppresses the reminders half of the brief.
+
 ## Open questions / unknowns
 
 - Trillion cannot see its own live runtime state. It knows what the code and
@@ -135,6 +159,8 @@ Trillion is no longer a single agent — it can mint specialists on demand.
 - `AGENT.md` — the spec and source of truth for personality and scope.
 - `config.yml` — every tunable (model, voice, intervals, confirmation gate).
 - `context/self/trillion.md` — this document.
+- `scripts/morning_brief.py` — the spoken daily brief (scheduled 09:00).
+- `scripts/probe_yahoo_calendar.py` — CalDAV connection diagnostics.
 - `docs/agent-factory.md` — how sub-agents are spawned, approved, dispatched.
 - `docs/design-agent.md` — the `design_screen` mockup agent.
 - `docs/phone-pwa-deploy.md` — phone PWA + tunnel setup.

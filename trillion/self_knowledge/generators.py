@@ -119,6 +119,7 @@ def render_integrations(config: dict) -> str:
         f"| Anthropic (Claude) | The brain — model `{model}` | {configured('ANTHROPIC_API_KEY')} |",
         f"| Deepgram | Speech-to-text (native voice REPL) | {configured('DEEPGRAM_API_KEY')} |",
         f"| ElevenLabs | Text-to-speech — voice `{voice_id}`, model `{voice_model}` | {configured('ELEVENLABS_API_KEY')} |",
+        f"| Yahoo Calendar | Read-only calendar over CalDAV | {configured('YAHOO_CALDAV_APP_PASSWORD')} |",
         "",
         "_Keys live in `.env`; the browser interface falls back to the browser's "
         "own speech synthesis when ElevenLabs is unavailable._",

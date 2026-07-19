@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from . import parser
-from .generators import default_generators, live_registry, load_config
+from .generators import _key_present, default_generators, live_registry, load_config
 
 _ROOT = Path(__file__).parent.parent.parent
 DOC_PATH = _ROOT / "context" / "self" / "trillion.md"
@@ -104,6 +104,22 @@ def build_summary(doc: str | None = None) -> str:
         "that is. You cannot inspect your own live config, so for 'is my voice "
         "working right now?' defer to the page's voice banner and the user.",
     ]
+
+    # Calendar + the unattended morning brief. Without this the slim summary
+    # says nothing about either, and Trillion wrongly denies both — it would
+    # tell the user it never speaks unprompted while a scheduled task is doing
+    # exactly that each morning.
+    if _key_present("YAHOO_CALDAV_APP_PASSWORD"):
+        parts += [
+            "",
+            "You can read the user's Yahoo calendar with `list_calendar_events` "
+            "— read-only, so you cannot add, move, or delete events; say so "
+            "plainly if asked to change one. A scheduled morning brief also "
+            "speaks the day's calendar and reminders aloud outside of any chat, "
+            "so you DO reach the user unprompted once a day. You cannot see the "
+            "OS scheduler, so defer to the user for the exact time or whether "
+            "it is still enabled.",
+        ]
     return "\n".join(parts).strip()
 
 
