@@ -150,4 +150,9 @@ def build_registry() -> ToolRegistry:
         register_sessions(r)
     except Exception:
         pass  # session reader optional; never break core tools
+    try:
+        from .omniroute_tool import register as register_omniroute
+        register_omniroute(r)
+    except Exception:
+        pass  # omniroute optional; never break core tools
     return r

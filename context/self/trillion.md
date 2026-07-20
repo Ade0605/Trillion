@@ -55,6 +55,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `list_notes` | List all note files available in the notes directory. | no |
 | `list_recent_sessions` | List the user's most recent Claude Code sessions — title, project, and how long ago each was active. | no |
 | `list_reminders` | List pending (or all) reminders. | no |
+| `omniroute_status` | Check OmniRoute (the local LLM router): whether it's running, its version, how many tokens have been used, and which model was routed most recently. | no |
 | `read_note` | Read the full contents of a specific note file by filename. | no |
 | `remember_fact` | Remember a fact about the user or their preferences for future conversations. | no |
 | `search_notes` | Search your local notes and documents for a keyword or phrase. | no |
@@ -62,7 +63,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `update_memory` | Correct or update a previously stored memory by its id. | no |
 | `web_search` | Search the web for current information, facts, definitions, or news. | yes |
 
-_18 tools registered._
+_19 tools registered._
 <!-- AUTO-END: capabilities -->
 
 ## Integrations
@@ -94,6 +95,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-20 | `9543e30` | feat: spoken end-of-day Claude Code report |
 | 2026-07-20 | `a15a5b5` | feat: report the 5 most recent Claude Code sessions |
 | 2026-07-20 | `74ce9ee` | feat: run the web server as a Windows service |
 | 2026-07-20 | `0ef4d8c` | feat: supervise the web server so it restarts in seconds |

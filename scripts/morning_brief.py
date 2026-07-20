@@ -77,6 +77,15 @@ def _sessions_part(limit: int = 5) -> str:
     return summarise(sessions, speakable=True)
 
 
+def _omniroute_part() -> str:
+    """OmniRoute health + token usage + last model. Never raises."""
+    try:
+        from trillion.omniroute import status, summarise
+        return summarise(status(), speakable=True)
+    except Exception:
+        return ""
+
+
 def build_brief(now: _dt.datetime | None = None) -> str:
     now = now or _dt.datetime.now().astimezone()
     parts = [f"{_greeting(now)}. It's {now.strftime('%A, %B %d')}."]
@@ -89,6 +98,9 @@ def build_brief(now: _dt.datetime | None = None) -> str:
     sess = _sessions_part()
     if sess:
         parts.append(sess)
+    omni = _omniroute_part()
+    if omni:
+        parts.append(omni)
     return " ".join(p for p in parts if p)
 
 
