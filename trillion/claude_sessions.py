@@ -182,6 +182,75 @@ def recent_sessions(limit: int = 5, root: Path | None = None) -> list[Session]:
     return out
 
 
+def sessions_since(since: _dt.datetime, root: Path | None = None) -> list[Session]:
+    """Every session touched at or after `since`, newest first."""
+    root = root or _default_root()
+    if not root.exists():
+        return []
+
+    out: list[Session] = []
+    for path in root.glob("*/*.jsonl"):
+        try:
+            if _dt.datetime.fromtimestamp(path.stat().st_mtime).astimezone() < since:
+                continue
+        except OSError:
+            continue
+        s = _read_session(path)
+        if s:
+            out.append(s)
+    out.sort(key=lambda s: s.modified, reverse=True)
+    return out
+
+
+def sessions_today(root: Path | None = None) -> list[Session]:
+    start = _dt.datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    return sessions_since(start, root=root)
+
+
+def day_report(sessions: list[Session], speakable: bool = False, top: int = 5) -> str:
+    """End-of-day rollup: how much was worked on, where, and on what."""
+    if not sessions:
+        return ("No Claude Code sessions today." if speakable
+                else "No Claude Code sessions today.")
+
+    projects: dict[str, int] = {}
+    for s in sessions:
+        projects[s.project] = projects.get(s.project, 0) + 1
+    turns = sum(s.turns for s in sessions)
+    busiest = max(sessions, key=lambda s: s.turns)
+    ranked = sorted(sessions, key=lambda s: s.turns, reverse=True)[:top]
+    proj_names = sorted(projects, key=lambda p: projects[p], reverse=True)
+
+    n = len(sessions)
+    plural = "s" if n != 1 else ""
+
+    if speakable:
+        parts = [
+            f"End of day. {n} Claude Code session{plural} today "
+            f"across {len(projects)} project{'s' if len(projects) != 1 else ''}: "
+            f"{', '.join(proj_names[:4])}.",
+            f"Around {turns} turns in total.",
+            f"Busiest was {busiest.title}, with {busiest.turns} turns.",
+        ]
+        if n > 1:
+            others = [s.title for s in ranked[1:4]]
+            if others:
+                parts.append("Also worked on " + "; ".join(others) + ".")
+        return " ".join(parts)
+
+    lines = [
+        f"Claude Code — end of day",
+        f"  sessions: {n} across {len(projects)} project(s): "
+        f"{', '.join(f'{p} ({projects[p]})' for p in proj_names)}",
+        f"  total turns: {turns}",
+        "",
+        "Most active:",
+    ]
+    for i, s in enumerate(ranked, 1):
+        lines.append(f"  {i}. {s.title} — {s.project} · {s.turns} turns · last {s.ago()}")
+    return "\n".join(lines)
+
+
 def summarise(sessions: list[Session], speakable: bool = False) -> str:
     """Rendered list. speakable=True drops IDs and shortens for text-to-speech."""
     if not sessions:
