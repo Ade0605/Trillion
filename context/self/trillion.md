@@ -53,6 +53,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `list_calendar_events` | Look at the user's calendar. | no |
 | `list_memories` | List all memories currently stored about the user. | no |
 | `list_notes` | List all note files available in the notes directory. | no |
+| `list_recent_sessions` | List the user's most recent Claude Code sessions — title, project, and how long ago each was active. | no |
 | `list_reminders` | List pending (or all) reminders. | no |
 | `read_note` | Read the full contents of a specific note file by filename. | no |
 | `remember_fact` | Remember a fact about the user or their preferences for future conversations. | no |
@@ -61,7 +62,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `update_memory` | Correct or update a previously stored memory by its id. | no |
 | `web_search` | Search the web for current information, facts, definitions, or news. | yes |
 
-_17 tools registered._
+_18 tools registered._
 <!-- AUTO-END: capabilities -->
 
 ## Integrations
@@ -93,6 +94,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-20 | `74ce9ee` | feat: run the web server as a Windows service |
 | 2026-07-20 | `0ef4d8c` | feat: supervise the web server so it restarts in seconds |
 | 2026-07-19 | `3841f28` | chore: teach self-knowledge about the calendar and morning brief |
 | 2026-07-19 | `d2c7c47` | fix: send Basic auth preemptively to Yahoo CalDAV |

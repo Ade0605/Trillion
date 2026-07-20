@@ -145,4 +145,9 @@ def build_registry() -> ToolRegistry:
         register_calendar(r)
     except Exception:
         pass  # calendar optional; never break core tools
+    try:
+        from .sessions_tool import register as register_sessions
+        register_sessions(r)
+    except Exception:
+        pass  # session reader optional; never break core tools
     return r

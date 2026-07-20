@@ -64,6 +64,19 @@ def _calendar_part() -> str:
         return f"I could not reach your calendar. {e}"
 
 
+def _sessions_part(limit: int = 5) -> str:
+    """Top N most recent Claude Code sessions, spoken form. Never raises — a
+    session-reader failure must not cost the user their calendar."""
+    try:
+        from trillion.claude_sessions import recent_sessions, summarise
+        sessions = recent_sessions(limit)
+    except Exception:
+        return ""
+    if not sessions:
+        return ""
+    return summarise(sessions, speakable=True)
+
+
 def build_brief(now: _dt.datetime | None = None) -> str:
     now = now or _dt.datetime.now().astimezone()
     parts = [f"{_greeting(now)}. It's {now.strftime('%A, %B %d')}."]
@@ -73,6 +86,9 @@ def build_brief(now: _dt.datetime | None = None) -> str:
     rem = _reminders_part()
     if rem:
         parts.append(rem)
+    sess = _sessions_part()
+    if sess:
+        parts.append(sess)
     return " ".join(p for p in parts if p)
 
 
