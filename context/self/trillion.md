@@ -95,6 +95,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-20 | `0211fab` | feat: report OmniRoute status, token usage and last model |
 | 2026-07-20 | `9543e30` | feat: spoken end-of-day Claude Code report |
 | 2026-07-20 | `a15a5b5` | feat: report the 5 most recent Claude Code sessions |
 | 2026-07-20 | `74ce9ee` | feat: run the web server as a Windows service |

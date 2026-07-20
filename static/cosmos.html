@@ -39,22 +39,44 @@
     display:flex; align-items:center; justify-content:center; font-size:10px; color:#4a6577;
     background:#0a121cAA; opacity:.0; transition:opacity .4s, border-color .4s; }
   .dock-slot.active{ opacity:1; border-color:currentColor; }
-  /* Composer */
-  #composer{ position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:4;
-    width:min(680px,92vw); display:flex; gap:8px; align-items:flex-end;
-    background:#0a1119cc; border:1px solid #1b2a38; border-radius:16px; padding:8px;
-    backdrop-filter:blur(10px); }
+  /* Composer — dissolved into the void: a glowing seam, not a boxed widget */
+  #composer{ position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:4;
+    width:min(620px,90vw); display:flex; gap:10px; align-items:flex-end;
+    background:linear-gradient(180deg,#0a111900,#0a1119aa); padding:10px 14px 12px;
+    border:0; border-bottom:1px solid #1b2a3866; border-radius:0;
+    transition:border-color .5s ease; }
+  #composer:focus-within{ border-bottom-color:var(--accent); }
+  #composer::after{ content:''; position:absolute; left:50%; bottom:-1px; transform:translateX(-50%);
+    width:0; height:1px; background:var(--accent); box-shadow:0 0 12px var(--accent);
+    transition:width .6s cubic-bezier(.2,.8,.2,1); }
+  #composer:focus-within::after{ width:100%; }
   #composer textarea{ flex:1; resize:none; background:transparent; border:0; outline:0; color:#eaf7ff;
-    font-size:15px; line-height:1.4; max-height:120px; font-family:inherit; }
-  #composer textarea::placeholder{ color:#5b7688; }
-  .cbtn{ background:transparent; border:1px solid #24384a; color:#9fc4d6; width:40px; height:40px;
-    border-radius:12px; cursor:pointer; font-size:17px; display:flex; align-items:center; justify-content:center; }
-  .cbtn:hover{ border-color:var(--accent); color:#eaf7ff; }
-  .cbtn.listening{ border-color:#ffb020; color:#ffb020; }
-  #subtitle{ position:fixed; left:50%; bottom:150px; transform:translateX(-50%); z-index:3;
-    width:min(680px,90vw); text-align:center; font-size:15px; line-height:1.5; color:#cfe6f2;
-    text-shadow:0 0 14px rgba(0,0,0,.8); pointer-events:none; min-height:1.5em; opacity:.95; }
-  @media (max-width:760px){ #labels,#dock{ display:none; } #subtitle{ bottom:130px; } }
+    font-size:16px; line-height:1.5; max-height:120px; font-family:inherit; text-align:center; }
+  #composer textarea::placeholder{ color:#466173; letter-spacing:.04em; }
+  .cbtn{ background:transparent; border:0; color:#7fa3b8; width:34px; height:34px;
+    cursor:pointer; font-size:17px; display:flex; align-items:center; justify-content:center;
+    opacity:.65; transition:opacity .3s, color .3s, transform .3s; }
+  .cbtn:hover{ opacity:1; color:var(--accent); transform:translateY(-2px); }
+  .cbtn.listening{ color:#ffb020; opacity:1; }
+
+  /* The cosmos speaking — words surface out of the dark, lit by the orb */
+  #subtitle{ position:fixed; left:50%; bottom:132px; transform:translateX(-50%); z-index:3;
+    width:min(760px,90vw); text-align:center; font-size:19px; line-height:1.65;
+    font-weight:300; letter-spacing:.012em; color:#dff2fb;
+    pointer-events:none; min-height:1.6em; }
+  #subtitle .w{ display:inline-block; opacity:0; filter:blur(6px); transform:translateY(6px);
+    animation:surface .55s cubic-bezier(.2,.8,.2,1) forwards;
+    /* glow rides the live voice level (--say, set each frame) */
+    text-shadow:0 0 calc(10px + var(--say,0) * 26px) var(--accent),
+                0 0 34px rgba(0,0,0,.95); }
+  @keyframes surface{ to{ opacity:1; filter:blur(0); transform:translateY(0); } }
+  #subtitle.you{ font-size:15px; color:#8fb6c9; font-weight:400; letter-spacing:.05em; }
+  #subtitle.you .w{ text-shadow:0 0 18px rgba(0,0,0,.9); }
+  @media (prefers-reduced-motion: reduce){
+    #subtitle .w{ animation:none; opacity:1; filter:none; transform:none; }
+  }
+  @media (max-width:760px){ #labels,#dock{ display:none; }
+    #subtitle{ bottom:118px; font-size:17px; } }
 </style>
 </head>
 <body>
@@ -509,7 +531,38 @@ function demoStep(dt){
 
 /* ── talk to Trillion: /chat SSE drives real states + dispatch on tool events ─ */
 const inputEl=document.getElementById('input'), subtitleEl=document.getElementById('subtitle');
-function showSub(t){ subtitleEl.textContent=t||''; }
+/* Render speech word-by-word so streaming text *surfaces* instead of the whole
+   line re-rendering (which flickers and kills the animation). Only the newly
+   arrived words get appended; existing ones are left alone. */
+let _subWords = [], _subKind = '';
+function showSub(t, kind){
+  kind = kind || 'trillion';
+  const text = (t || '').trim();
+  if (kind !== _subKind || !text) {          // speaker changed, or cleared
+    subtitleEl.innerHTML = ''; _subWords = []; _subKind = kind;
+    subtitleEl.classList.toggle('you', kind === 'you');
+    if (!text) return;
+  }
+  const words = text.split(/\s+/).filter(Boolean);
+  // Streaming rewrites the tail (partial word) — drop the last rendered word
+  // when it's no longer a prefix match, so it re-surfaces complete.
+  if (_subWords.length && words.length >= _subWords.length) {
+    const i = _subWords.length - 1;
+    if (_subWords[i] !== words[i] && subtitleEl.lastElementChild) {
+      subtitleEl.removeChild(subtitleEl.lastElementChild); _subWords.pop();
+    }
+  } else if (words.length < _subWords.length) {
+    subtitleEl.innerHTML = ''; _subWords = [];
+  }
+  for (let i = _subWords.length; i < words.length; i++) {
+    const s = document.createElement('span');
+    s.className = 'w'; s.textContent = words[i];
+    s.style.animationDelay = Math.min((i - _subWords.length) * 45, 400) + 'ms';
+    subtitleEl.appendChild(s);
+    subtitleEl.appendChild(document.createTextNode(' '));
+    _subWords.push(words[i]);
+  }
+}
 inputEl.addEventListener('input',()=>{ inputEl.style.height='auto'; inputEl.style.height=Math.min(inputEl.scrollHeight,120)+'px'; });
 inputEl.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); }});
 document.getElementById('send-btn').onclick=sendChat;
@@ -517,7 +570,9 @@ document.getElementById('send-btn').onclick=sendChat;
 async function sendChat(){
   const text=inputEl.value.trim(); if(!text) return;
   inputEl.value=''; inputEl.style.height='auto';
-  realEvents=true; setState('processing'); showSub('');
+  realEvents=true; setState('processing');
+  showSub(text, 'you');            // your words surface first, then dissolve
+  setTimeout(()=>{ if(stateName==='processing') showSub(''); }, 1600);
   let reply='', lastTurn=null;
   try{
     const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
@@ -622,6 +677,9 @@ function tick(){
     if(p>=1){ orbScene.remove(w); w.geometry.dispose(); w.material.dispose(); waves.splice(i,1); } }
 
   /* background glow tracks orb + brightens on speaking/processing */
+  /* speech glow rides the live level, so the words pulse with the voice */
+  subtitleEl.style.setProperty('--say', (stateName==='speaking' ? audio.loud : audio.loud*0.25).toFixed(3));
+
   skyUniforms.uTime.value=t; skyUniforms.uGlowColor.value.setRGB(cur.rim[0],cur.rim[1],cur.rim[2]);
   skyUniforms.uGlow.value=lerp(skyUniforms.uGlow.value, cur.glow*(0.7+audio.loud*0.5), 0.06);
   skyUniforms.uFade.value=lerp(skyUniforms.uFade.value,1.0,0.02);
