@@ -93,6 +93,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-20 | `0ef4d8c` | feat: supervise the web server so it restarts in seconds |
 | 2026-07-19 | `3841f28` | chore: teach self-knowledge about the calendar and morning brief |
 | 2026-07-19 | `d2c7c47` | fix: send Basic auth preemptively to Yahoo CalDAV |
 | 2026-07-19 | `04ecaa3` | chore: use a fake email in the masking test fixture |
