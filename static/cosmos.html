@@ -14,8 +14,11 @@
   #orb-canvas{ z-index:1; }
   /* Front label layer */
   #labels{ position:fixed; inset:0; z-index:2; pointer-events:none; overflow:hidden; }
-  .agent-label{ position:absolute; transform:translate(-50%,0); text-align:center; white-space:nowrap;
-    opacity:0; transition:opacity .25s ease; pointer-events:none; will-change:transform,opacity; }
+  /* positioned purely by transform (see tick) so moving a label never triggers
+     layout — left/top are pinned at 0 and never touched again. */
+  .agent-label{ position:absolute; left:0; top:0; text-align:center; white-space:nowrap;
+    opacity:0; transition:opacity .25s ease; pointer-events:none;
+    will-change:transform,opacity; contain:layout style; }
   .agent-label .nm{ font-size:13px; font-weight:600; letter-spacing:.02em; color:#eaf7ff;
     text-shadow:0 0 10px rgba(0,0,0,.9); }
   .agent-label .sp{ font-size:10.5px; color:#8fb6c9; margin-top:1px; text-shadow:0 0 8px rgba(0,0,0,.9); }
@@ -312,7 +315,10 @@ let waveTimer = 0;
 const bgCanvas = document.getElementById('bg-canvas');
 const bgRenderer = new THREE.WebGLRenderer({ canvas:bgCanvas, antialias:false });
 let perfMode = false;
-function bgPixelRatio(){ return perfMode ? Math.min(devicePixelRatio,1)*0.6 : Math.min(devicePixelRatio,1.5); }
+// The background is a full-screen noise shader — by far the most expensive pass.
+// It drifts slowly, so rendering it below device resolution is imperceptible but
+// roughly halves fragment cost on a HiDPI screen.
+function bgPixelRatio(){ return perfMode ? Math.min(devicePixelRatio,1)*0.5 : Math.min(devicePixelRatio,1.0); }
 bgRenderer.setPixelRatio(bgPixelRatio());
 bgRenderer.autoClear = false;
 
@@ -328,7 +334,10 @@ const skyQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMat
   vertexShader:`void main(){ gl_Position=vec4(position,1.0); }`,
   fragmentShader: NOISE_GLSL + `
     uniform vec2 uRes; uniform float uTime,uFade,uGlow; uniform vec3 uGlowColor;
-    float fbm(vec3 p){ float a=0.5,f=0.0; for(int i=0;i<5;i++){ f+=a*snoise(p); p*=2.02; a*=0.5;} return f; }
+    // 3 octaves, not 5: this runs per-pixel across three nebula layers, so each
+    // extra octave costs a full-screen noise evaluation. At this scale the top
+    // two octaves are visually indistinguishable and cost ~40% of the frame.
+    float fbm(vec3 p){ float a=0.5,f=0.0; for(int i=0;i<3;i++){ f+=a*snoise(p); p*=2.02; a*=0.5;} return f; }
     float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
     float starLayer(vec2 uv,float density,float size,float tw){
       vec2 g=uv*density; vec2 id=floor(g); vec2 f=fract(g); float h=hash(id);
@@ -473,6 +482,8 @@ function agentWorldPos(a,t){
   return _tmp;
 }
 const AX_X=new THREE.Vector3(1,0,0), AX_Y=new THREE.Vector3(0,1,0);
+// scratch vectors reused by the per-frame loops (avoids allocating in tick)
+const _v1=new THREE.Vector3(), _v2=new THREE.Vector3(), _v3=new THREE.Vector3();
 
 /* ═══════════════════════ TIER 5 — dispatch beams / flares / rings ═════════ */
 const beams=[];   // { mesh, bead, ring, a, t, dur }
@@ -573,7 +584,8 @@ async function sendChat(){
   realEvents=true; setState('processing');
   showSub(text, 'you');            // your words surface first, then dissolve
   setTimeout(()=>{ if(stateName==='processing') showSub(''); }, 1600);
-  let reply='', lastTurn=null;
+  stopSpeech();                    // barge-in: a new turn cancels the old voice
+  let reply='', lastTurn=null, spoke=false, ttsAccum='';
   try{
     const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
     if(r.status===401){ setState('error'); showSub('Not signed in — open with your ?token= link.'); return; }
@@ -590,12 +602,21 @@ async function sendChat(){
             if(a){ dispatch(a.data.id); setWorking(a.data.id,true); setTimeout(()=>setWorking(a.data.id,false),4000);} }
           if(o.signoff){ setState('idle'); break outer; }
           if(o.turn_id){ lastTurn=o.turn_id; }
-          if(o.chunk!=null){ reply+=o.chunk; showSub(reply); }
+          if(o.chunk!=null){
+            reply+=o.chunk; showSub(reply);
+            // speak each sentence as soon as it's complete
+            ttsAccum += o.chunk;
+            const { sentences, remainder } = extractSentences(ttsAccum);
+            for(const s of sentences){ enqueueSentence(s); spoke = true; }
+            ttsAccum = remainder;
+          }
         }catch(e){}
       }
     }
+    if(ttsAccum.trim()){ enqueueSentence(ttsAccum); spoke = true; }   // trailing fragment
   }catch(e){ setState('error'); showSub('Connection error.'); return; }
-  if(lastTurn) playTTS(lastTurn); else { setState('idle'); }
+  // Only fall back to the whole-reply render when nothing was spoken piecewise.
+  if(!spoke){ if(lastTurn) playTTS(lastTurn); else setState('idle'); }
 }
 
 /* prime the AudioContext on the first real user gesture so playback isn't
@@ -604,7 +625,62 @@ let audioPrimed=false;
 function primeAudio(){ if(audioPrimed) return; audioPrimed=true; try{ audio._ctx(); }catch(e){} }
 ['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev, primeAudio, {passive:true}));
 
-/* speak the reply aloud while a parallel analyser tap drives the orb */
+/* ── streaming speech ────────────────────────────────────────────────────────
+   Waiting for the whole reply before speaking meant 5-10s of silence: TTFB +
+   full stream + one big TTS render. Instead each finished sentence is sent to
+   /speak the moment it lands, so audio starts while the rest is still arriving.
+   Fetches run in parallel (queue of promises) but play strictly in order.     */
+let audioQueue = [], playingQueue = false, ttsOn = true;
+const audioCtxEl = new Audio();          // one element, reused: iOS-friendly
+
+function extractSentences(text){
+  const out = []; const re = /[^.!?]*[.!?]+(?:\s+|$)/g; let m, last = 0;
+  while ((m = re.exec(text)) !== null){ out.push(m[0].trim()); last = re.lastIndex; }
+  return { sentences: out, remainder: text.slice(last) };
+}
+
+function fetchSentenceAudio(sentence){
+  return fetch('/speak', { method:'POST', headers:{'Content-Type':'application/json'},
+                           body: JSON.stringify({ text: sentence }) })
+    .then(r => r.ok ? r.blob() : null)
+    .then(b => b ? URL.createObjectURL(b) : null)
+    .catch(() => null);
+}
+
+function playUrl(url){
+  return new Promise(res => {
+    audioCtxEl.src = url;
+    try{ audio.attach(audioCtxEl); if(audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume(); }catch(e){}
+    audioCtxEl.onended = audioCtxEl.onerror = () => { URL.revokeObjectURL(url); res(); };
+    audioCtxEl.play().catch(()=>res());
+  });
+}
+
+async function drainQueue(){
+  if (playingQueue) return;
+  playingQueue = true;
+  setState('speaking');
+  while (audioQueue.length){
+    const url = await audioQueue.shift();
+    if (!playingQueue) break;
+    if (url) await playUrl(url);
+  }
+  playingQueue = false;
+  if (stateName === 'speaking'){ setState('idle'); showSub(''); }
+}
+
+function enqueueSentence(sentence){
+  if (!ttsOn || !sentence.trim()) return;
+  audioQueue.push(fetchSentenceAudio(sentence));   // starts fetching immediately
+  drainQueue();
+}
+
+function stopSpeech(){
+  playingQueue = false; audioQueue = [];
+  try{ audioCtxEl.pause(); }catch(e){}
+}
+
+/* legacy whole-reply path, still used when no sentence ever completed */
 let ttsEl=null;
 function playTTS(turnId){
   setState('speaking');
@@ -633,7 +709,7 @@ else{
 }
 
 /* ═══════════════════════ THE ONE ANIMATION LOOP ═══════════════════════════ */
-let bgFrame=0;
+let bgFrame=0, _fpsAcc=0, _fpsFrames=0;
 function tick(){
   if(!running) return;
   const dt=Math.min(clock.getDelta(),0.05); const t=clock.elapsedTime;
@@ -692,10 +768,17 @@ function tick(){
     // docking target overrides orbit when working & a panel exists
     let target=wp;
     if(a.working && a.dock){
-      const rc=a.dock.getBoundingClientRect(); if(rc.width){ target=screenToWorld(rc.left+rc.width/2, rc.top+rc.height/2); }
+      // getBoundingClientRect forces layout; the dock slot doesn't move, so
+      // resolve it once per docking rather than every frame.
+      if(!a._dockPos){
+        const rc=a.dock.getBoundingClientRect();
+        if(rc.width) a._dockPos=screenToWorld(rc.left+rc.width/2, rc.top+rc.height/2);
+      }
+      if(a._dockPos) target=a._dockPos;
       a.dockAmt=lerp(a.dockAmt, 1, 0.12);          // snappy in
-    } else { a.dockAmt=lerp(a.dockAmt, 0, 0.04); }  // graceful out
-    const shown=wp.clone().lerp(target, a.dockAmt);
+    } else { a.dockAmt=lerp(a.dockAmt, 0, 0.04); a._dockPos=null; }  // graceful out
+    // reuse one vector per agent instead of allocating every frame (GC churn)
+    const shown=(a._shown||(a._shown=new THREE.Vector3())).copy(wp).lerp(target, a.dockAmt);
     a.sprite.position.copy(shown); a.glow.position.copy(shown);
     // flare (dispatch) + working pulse + breathing
     a.flare=lerp(a.flare,0,0.06);
@@ -714,25 +797,35 @@ function tick(){
     let op = behind ? 0.28 : 1.0;
     if(behind && nearCentre) op=0;             // directly behind the orb → hide
     if(a.working) op=Math.max(op,0.9);
-    a.label.style.left=sx+'px'; a.label.style.top=(sy+26)+'px';
-    a.label.style.zIndex=String(1000+Math.round(camZ*10));
-    a.label.classList.toggle('busy',a.working);
+    // transform (compositor) instead of left/top (layout), and only write when
+    // the value actually changed — 5 labels x 4 style writes per frame was
+    // forcing layout every frame.
+    const tx=Math.round(sx), ty=Math.round(sy+26);
+    if(tx!==a._tx || ty!==a._ty){
+      a.label.style.transform=`translate3d(${tx}px,${ty}px,0) translateX(-50%)`;
+      a._tx=tx; a._ty=ty;
+    }
+    const z=String(1000+Math.round(camZ*10));
+    if(z!==a._z){ a.label.style.zIndex=z; a._z=z; }
+    if(a.working!==a._busy){ a.label.classList.toggle('busy',a.working); a._busy=a.working; }
     if(!a.revealed){ a.revealed=true; }         // reveal only after first real projection
-    a.label.style.opacity=(proj.z<1?op:0);
+    const o=(proj.z<1?op:0).toFixed(2);
+    if(o!==a._op){ a.label.style.opacity=o; a._op=o; }
   }
 
   /* dispatch beams */
   for(let i=beams.length-1;i>=0;i--){ const b=beams[i]; b.t+=dt; const p=b.t/b.dur;
-    const from=new THREE.Vector3(0,0,0), to=b.a.pos;
-    // orient cylinder from orb → agent, grow out then fade
-    const dir=new THREE.Vector3().subVectors(to,from); const len=dir.length();
-    b.cyl.position.copy(from).add(dir.clone().multiplyScalar(0.5));
-    b.cyl.scale.set(1,len,1); b.cyl.quaternion.setFromUnitVectors(AX_Y,dir.clone().normalize());
+    const to=b.a.pos;
+    // orient cylinder from orb → agent, grow out then fade (scratch vectors: no
+    // per-frame allocation)
+    const dir=_v1.copy(to); const len=dir.length();
+    b.cyl.position.copy(_v2.copy(dir).multiplyScalar(0.5));
+    b.cyl.scale.set(1,len,1); b.cyl.quaternion.setFromUnitVectors(AX_Y,_v3.copy(dir).normalize());
     const env=Math.sin(clamp(p,0,1)*Math.PI);      // peak in the middle
     b.cyl.material.opacity=env*0.8;
     // bead races out and back
     const travel=p<0.5? p*2 : (1-(p-0.5)*2);
-    b.bead.position.copy(from).add(dir.clone().multiplyScalar(clamp(travel,0,1)));
+    b.bead.position.copy(_v2.copy(dir).multiplyScalar(clamp(travel,0,1)));
     b.bead.scale.setScalar(0.35+env*0.4); b.bead.material.opacity=env;
     b.a.flare=Math.max(b.a.flare,env);
     // sonar ring at the agent, peaks mid
@@ -745,13 +838,28 @@ function tick(){
     if(p>=1){ orbScene.remove(o.m); o.m.geometry.dispose(); o.m.material.dispose(); orbPings.splice(i,1); } }
 
   /* ── render: background (optionally every other frame in perf mode) then orb ─ */
+  // The orb stays at full rate; the background renders every other frame always
+  // (every 3rd in perf mode). It drifts slowly enough that the lower rate is
+  // invisible, and it is the most expensive pass by a wide margin.
   bgFrame++;
-  if(!perfMode || (bgFrame&1)){
+  const bgEvery = perfMode ? 3 : 2;
+  if(bgFrame % bgEvery === 0){
     bgRenderer.clear();
     bgRenderer.render(skyScene, skyCam);
     bgRenderer.render(netScene, netCam);
   }
   orbRenderer.render(orbScene, orbCam);
+
+  /* adaptive quality: if the frame budget is being missed consistently, drop to
+     perf mode once rather than letting the whole scene stutter. */
+  if(!perfMode && !REDUCED){
+    _fpsAcc += dt; _fpsFrames++;
+    if(_fpsAcc >= 2.0){
+      const fps = _fpsFrames / _fpsAcc;
+      if(fps < 40){ Cosmos.setPerf(true); console.info('[cosmos] low fps (' + fps.toFixed(0) + ') — perf mode on'); }
+      _fpsAcc = 0; _fpsFrames = 0;
+    }
+  }
   requestAnimationFrame(tick);
 }
 

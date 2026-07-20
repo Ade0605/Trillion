@@ -161,13 +161,30 @@ def events_between(start: _dt.datetime, end: _dt.datetime) -> list[Event]:
     return out
 
 
-def todays_events(use_cache_on_error: bool = True) -> list[Event]:
-    """Events for the rest of today (all-day events always included)."""
+# A CalDAV round trip costs ~5s, which dominated response time whenever Trillion
+# checked the calendar. Yahoo events don't change second to second, so a short
+# TTL makes repeat asks instant while staying fresh enough to be useful.
+FRESH_SECONDS = 120
+
+
+def todays_events(use_cache_on_error: bool = True, max_age: float | None = None) -> list[Event]:
+    """Events for the rest of today (all-day events always included).
+
+    Served from cache when the last read is younger than `max_age`
+    (default FRESH_SECONDS); pass 0 to force a refresh.
+    """
     tz = _local_tz()
     now = _dt.datetime.now(tz)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + _dt.timedelta(days=1)
     today = start.date()
+
+    ttl = FRESH_SECONDS if max_age is None else max_age
+    if (ttl and _cache["events"] is not None and _cache["day"] == today
+            and _cache["at"] is not None
+            and (now - _cache["at"]).total_seconds() < ttl):
+        return _cache["events"]
+
     try:
         evs = events_between(start, end)
         _cache.update({"events": evs, "at": now, "day": today})
@@ -176,6 +193,24 @@ def todays_events(use_cache_on_error: bool = True) -> list[Event]:
         if use_cache_on_error and _cache["events"] is not None and _cache["day"] == today:
             return _cache["events"]
         raise
+
+
+def prewarm() -> None:
+    """Populate the cache in the background at startup.
+
+    Without this the *first* calendar question of the session still pays the
+    full ~5s CalDAV round trip. Runs on a daemon thread and swallows every
+    error — a warm-up must never delay or break boot.
+    """
+    import threading
+
+    def _run():
+        try:
+            todays_events(max_age=0)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, name="calendar-prewarm", daemon=True).start()
 
 
 def summarise(events: list[Event], max_items: int = 8) -> str:

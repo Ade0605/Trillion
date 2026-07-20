@@ -19,8 +19,8 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
+import socket
 import sqlite3
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -101,20 +101,21 @@ class Status:
         return "yesterday" if d == 1 else f"{d} days ago"
 
 
+PORT = int(os.environ.get("OMNIROUTE_PORT", "20128"))
+
+
 def _is_running() -> tuple[bool, int]:
-    """Count live OmniRoute node processes via PowerShell (psutil isn't installed)."""
-    ps = (
-        "(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -ErrorAction SilentlyContinue "
-        "| Where-Object { $_.CommandLine -match 'omniroute' } | Measure-Object).Count"
-    )
+    """Liveness by TCP connect to the router's port.
+
+    This replaced a PowerShell process scan that cost ~2.3s per call and made
+    every status request feel like a hang. A socket probe is ~1ms and is the
+    better signal anyway: it answers "is it actually serving?" rather than "does
+    a process with a matching command line exist?".
+    """
     try:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-            capture_output=True, text=True, timeout=20,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        n = int((out.stdout or "0").strip() or 0)
-        return n > 0, n
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.35)
+            return (s.connect_ex(("127.0.0.1", PORT)) == 0), 1
     except Exception:
         return False, 0
 

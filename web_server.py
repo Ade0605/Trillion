@@ -61,6 +61,12 @@ def get_agent() -> Agent:
                     wire_live(registry)
                 except Exception:
                     pass
+                try:  # warm the calendar cache so the first ask isn't a ~5s CalDAV wait
+                    from trillion import calendar_yahoo
+                    if calendar_yahoo.configured():
+                        calendar_yahoo.prewarm()
+                except Exception:
+                    pass
                 try:
                     from trillion.heartbeat import Heartbeat
                     hb = Heartbeat()
