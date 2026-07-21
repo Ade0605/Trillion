@@ -95,6 +95,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-21 | `159d177` | perf: pipeline LLM streaming into TTS with per-sentence segments |
 | 2026-07-20 | `98922ed` | perf: cut response latency and stop the scene stuttering |
 | 2026-07-20 | `461b63c` | feat(cosmos): speech surfaces from the orb instead of a floating box |
 | 2026-07-20 | `0211fab` | feat: report OmniRoute status, token usage and last model |
@@ -109,7 +110,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-19 | `ba6389f` | chore: refresh self-knowledge, ignore .jcode, add CLAUDE.md |
 | 2026-07-17 | `01ae9d0` | Bump CI actions to Node 24 majors |
 | 2026-07-17 | `b63e5c4` | Allowlist git-ignored runtime path so CI drift check passes |
-| 2026-07-17 | `715bae7` | Refresh self-knowledge recent-activity block |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
