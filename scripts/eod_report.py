@@ -52,6 +52,17 @@ def _sessions_part() -> str:
         return "I couldn't read your Claude Code sessions."
 
 
+def _open_face() -> None:
+    """Put the cosmic /face UI on screen instead of a bare terminal."""
+    import os
+    import webbrowser
+    port = os.environ.get("TRILLION_PORT", "7777")
+    try:
+        webbrowser.open(f"http://localhost:{port}/face")
+    except Exception:
+        pass
+
+
 def build_report(now: _dt.datetime | None = None) -> str:
     now = now or _dt.datetime.now().astimezone()
     parts = [_sessions_part()]
@@ -101,6 +112,8 @@ def main() -> int:
     if not args.force and _already_reported_recently():
         print("[skipped: a report already ran in the last 45 minutes]")
         return 0
+
+    _open_face()
 
     try:
         from trillion.voice.tts import speak
