@@ -27,6 +27,17 @@ def record_turn_text(text: str) -> str:
     return turn_id
 
 
+def record_turn_text_as(turn_id: str, text: str) -> str:
+    """Store text under a caller-chosen id (used for per-sentence segments,
+    keyed `<base_turn_id>::<seq>`), pruning expired entries lazily."""
+    now = time.monotonic()
+    with _lock:
+        for k in [k for k, (_, exp) in _store.items() if exp < now]:
+            _store.pop(k, None)
+        _store[turn_id] = (text, now + _TTL)
+    return turn_id
+
+
 def get_turn_text(turn_id: str) -> str | None:
     """Return the text for a turn_id, or None if missing/expired. Never deletes
     on read — the <audio> element's second GET must still succeed."""

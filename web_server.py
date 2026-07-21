@@ -626,6 +626,18 @@ def chat():
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     def generate():
+        # Pipelining: emit each finished sentence as its own `speak_segment` so
+        # the client can start TTS on sentence 1 while the model is still
+        # writing sentence 2. Without this the client must wait for the whole
+        # reply before any audio begins — the main source of voice dead air.
+        from trillion.segments import SegmentEmitter
+
+        pending = []          # segment events, flushed into the SSE stream
+        emitter = SegmentEmitter(
+            pending.append,
+            record=phone.record_turn_text_as,
+        )
+
         reply_parts = []
         try:
             for item in agent.run_turn(user_message):
@@ -636,9 +648,25 @@ def chat():
                 else:
                     reply_parts.append(item)
                     yield f"data: {json.dumps({'chunk': item})}\n\n"
+                    # Text from tool rounds streams too, so "let me check…" is
+                    # spoken live rather than held until after the tool runs.
+                    emitter.feed(item)
+                    while pending:
+                        yield f"data: {json.dumps(pending.pop(0))}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'chunk': f'[Error: {e}]'})}\n\n"
-        # Stash the full reply so the phone's <audio> can fetch it by turn_id.
+
+        emitter.finish()                      # flushes the held final segment
+        for evt in pending:
+            yield f"data: {json.dumps(evt)}\n\n"
+        if emitter.emitted:
+            first = emitter.emitted[0]
+            app.logger.info(
+                "speak_segment base=%s segments=%d first_seq0_t=%.2fs",
+                first["base_turn_id"], len(emitter.emitted), first["t_since_user"],
+            )
+        # Whole-reply id retained: older clients and the non-segment fallback
+        # still fetch /api/tts/<turn_id>.
         reply = "".join(reply_parts).strip()
         if reply:
             yield f"data: {json.dumps({'turn_id': phone.record_turn_text(reply)})}\n\n"

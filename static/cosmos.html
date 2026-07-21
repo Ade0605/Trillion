@@ -585,7 +585,7 @@ async function sendChat(){
   showSub(text, 'you');            // your words surface first, then dissolve
   setTimeout(()=>{ if(stateName==='processing') showSub(''); }, 1600);
   stopSpeech();                    // barge-in: a new turn cancels the old voice
-  let reply='', lastTurn=null, spoke=false, ttsAccum='';
+  let reply='', lastTurn=null, spoke=false;
   try{
     const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
     if(r.status===401){ setState('error'); showSub('Not signed in — open with your ?token= link.'); return; }
@@ -602,18 +602,11 @@ async function sendChat(){
             if(a){ dispatch(a.data.id); setWorking(a.data.id,true); setTimeout(()=>setWorking(a.data.id,false),4000);} }
           if(o.signoff){ setState('idle'); break outer; }
           if(o.turn_id){ lastTurn=o.turn_id; }
-          if(o.chunk!=null){
-            reply+=o.chunk; showSub(reply);
-            // speak each sentence as soon as it's complete
-            ttsAccum += o.chunk;
-            const { sentences, remainder } = extractSentences(ttsAccum);
-            for(const s of sentences){ enqueueSentence(s); spoke = true; }
-            ttsAccum = remainder;
-          }
+          if(o.type==='speak_segment'){ onSpeakSegment(o); spoke = true; continue; }
+          if(o.chunk!=null){ reply+=o.chunk; showSub(reply); }
         }catch(e){}
       }
     }
-    if(ttsAccum.trim()){ enqueueSentence(ttsAccum); spoke = true; }   // trailing fragment
   }catch(e){ setState('error'); showSub('Connection error.'); return; }
   // Only fall back to the whole-reply render when nothing was spoken piecewise.
   if(!spoke){ if(lastTurn) playTTS(lastTurn); else setState('idle'); }
@@ -630,54 +623,63 @@ function primeAudio(){ if(audioPrimed) return; audioPrimed=true; try{ audio._ctx
    full stream + one big TTS render. Instead each finished sentence is sent to
    /speak the moment it lands, so audio starts while the rest is still arriving.
    Fetches run in parallel (queue of promises) but play strictly in order.     */
-let audioQueue = [], playingQueue = false, ttsOn = true;
+let audioQueue = [], playing = false, ttsOn = true;
+let activeBase = null, lastWasFinal = false, segAbort = null;
 const audioCtxEl = new Audio();          // one element, reused: iOS-friendly
 
-function extractSentences(text){
-  const out = []; const re = /[^.!?]*[.!?]+(?:\s+|$)/g; let m, last = 0;
-  while ((m = re.exec(text)) !== null){ out.push(m[0].trim()); last = re.lastIndex; }
-  return { sentences: out, remainder: text.slice(last) };
+/* Server emits one speak_segment per sentence (see trillion/segments.py), so
+   sentence splitting and the is_final flag live in one tested place instead of
+   being re-derived in each client. */
+function onSpeakSegment(msg){
+  if (!ttsOn) return;
+  if (activeBase === null && audioQueue.length === 0 && !playing){
+    activeBase = msg.base_turn_id;
+    setState('speaking');
+  } else if (msg.base_turn_id !== activeBase){
+    return;                              // stale segment from an interrupted turn
+  }
+  audioQueue.push(msg);
+  pumpQueue();
 }
 
-function fetchSentenceAudio(sentence){
-  return fetch('/speak', { method:'POST', headers:{'Content-Type':'application/json'},
-                           body: JSON.stringify({ text: sentence }) })
-    .then(r => r.ok ? r.blob() : null)
-    .then(b => b ? URL.createObjectURL(b) : null)
-    .catch(() => null);
-}
-
-function playUrl(url){
-  return new Promise(res => {
-    audioCtxEl.src = url;
-    try{ audio.attach(audioCtxEl); if(audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume(); }catch(e){}
-    audioCtxEl.onended = audioCtxEl.onerror = () => { URL.revokeObjectURL(url); res(); };
-    audioCtxEl.play().catch(()=>res());
+function pumpQueue(){
+  if (playing || audioQueue.length === 0) return;
+  const seg = audioQueue.shift();
+  lastWasFinal = !!seg.is_final;
+  playing = true;
+  playSegment(seg.turn_id).catch(e => {
+    if (!(e && e.name === 'AbortError')) onSegmentEnded();
   });
 }
 
-async function drainQueue(){
-  if (playingQueue) return;
-  playingQueue = true;
-  setState('speaking');
-  while (audioQueue.length){
-    const url = await audioQueue.shift();
-    if (!playingQueue) break;
-    if (url) await playUrl(url);
-  }
-  playingQueue = false;
-  if (stateName === 'speaking'){ setState('idle'); showSub(''); }
+async function playSegment(turnId){
+  segAbort = new AbortController();
+  const url = '/api/tts/' + encodeURIComponent(turnId) + (TOKEN ? ('?token=' + encodeURIComponent(TOKEN)) : '');
+  const r = await fetch(url, { signal: segAbort.signal });
+  if (!r.ok) throw new Error('tts ' + r.status);
+  const blobUrl = URL.createObjectURL(await r.blob());
+  audioCtxEl.src = blobUrl;
+  try{ audio.attach(audioCtxEl); if(audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume(); }catch(e){}
+  audioCtxEl.onended = audioCtxEl.onerror = () => { URL.revokeObjectURL(blobUrl); onSegmentEnded(); };
+  await audioCtxEl.play().catch(()=>{});
 }
 
-function enqueueSentence(sentence){
-  if (!ttsOn || !sentence.trim()) return;
-  audioQueue.push(fetchSentenceAudio(sentence));   // starts fetching immediately
-  drainQueue();
+function onSegmentEnded(){
+  playing = false; segAbort = null;
+  if (audioQueue.length > 0){ pumpQueue(); return; }
+  if (lastWasFinal){
+    activeBase = null; lastWasFinal = false;
+    setState('idle'); showSub('');
+  }
+  // else: drained but more segments still arriving — stay in 'speaking'
 }
 
 function stopSpeech(){
-  playingQueue = false; audioQueue = [];
-  try{ audioCtxEl.pause(); }catch(e){}
+  audioQueue.length = 0; playing = false;
+  activeBase = null; lastWasFinal = false;
+  if (segAbort){ try{ segAbort.abort(); }catch(e){} segAbort = null; }
+  try{ audioCtxEl.pause(); audioCtxEl.currentTime = 0; }catch(e){}
+  audioCtxEl.onended = null;
 }
 
 /* legacy whole-reply path, still used when no sentence ever completed */

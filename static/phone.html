@@ -137,18 +137,83 @@ function audioLevel(){
   return Math.min((sum / freqData.length) / 128, 1);
 }
 
-async function speak(turnId, continuous){
-  setStatus('speaking');
+/* ── segment audio queue ──────────────────────────────────────────────────────
+   Previously this waited for the whole reply, then fetched one big MP3 — the
+   reply had to be fully generated AND fully downloaded before a single word was
+   audible. Now the server emits a speak_segment per sentence and we play them
+   in order, so audio starts on sentence 1 while the rest is still being written.
+   One fetch is in flight at a time; the next segment queues behind it.        */
+let audioQueue = [], playing = false, activeBase = null, lastWasFinal = false;
+let segAbort = null, speakContinuous = false;
+
+function onSpeakSegment(msg){
+  if (activeBase === null && audioQueue.length === 0 && !playing){
+    activeBase = msg.base_turn_id;
+    setStatus('speaking');
+  } else if (msg.base_turn_id !== activeBase){
+    return;                        // stale segment from an interrupted turn
+  }
+  audioQueue.push(msg);
+  pumpQueue();
+}
+
+function pumpQueue(){
+  if (playing || audioQueue.length === 0) return;
+  const seg = audioQueue.shift();
+  lastWasFinal = !!seg.is_final;
+  playing = true;
+  playSegment(seg.turn_id).catch(e => {
+    if (!(e && e.name === 'AbortError')) onSegmentEnded();
+  });
+}
+
+async function playSegment(turnId){
+  const url = '/api/tts/' + turnId + tokenQS;
   // Audible path — <audio>, ignores the iOS silent switch.
-  audio.src = '/api/tts/' + turnId + tokenQS;
+  audio.src = url;
+  audio.onended = onSegmentEnded;
   audio.play().catch(()=>{});
   // Analysis path — decode a CLONE of the bytes into a buffer source feeding the
   // analyser (iOS MediaElementSource+analyser returns zeros, so we branch).
+  // Abortable so an interrupt cancels an in-flight download.
+  try {
+    segAbort = new AbortController();
+    const bytes = await (await fetch('/api/tts/' + turnId, { signal: segAbort.signal })).arrayBuffer();
+    const buf = await audioCtx.decodeAudioData(bytes.slice(0));
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.connect(analyser); src.start();  // no destination → silent, analyser only
+  } catch(e){ if (e && e.name === 'AbortError') throw e; }
+}
+
+function onSegmentEnded(){
+  playing = false; segAbort = null; orbLevel = 0;
+  if (audioQueue.length > 0){ pumpQueue(); return; }
+  if (lastWasFinal){
+    activeBase = null; lastWasFinal = false;
+    if (speakContinuous && state === 'speaking') startListening();
+    else setStatus('idle');
+  }
+  // else: queue drained but more segments still coming — stay in 'speaking'
+}
+
+function stopSpeaking(){
+  audioQueue.length = 0; playing = false;
+  activeBase = null; lastWasFinal = false;
+  if (segAbort){ try{ segAbort.abort(); }catch(e){} segAbort = null; }
+  try { audio.pause(); audio.currentTime = 0; } catch(e){}
+  audio.onended = null; orbLevel = 0;
+}
+
+/* whole-reply fallback, used only when no segment ever arrived */
+async function speak(turnId, continuous){
+  setStatus('speaking');
+  audio.src = '/api/tts/' + turnId + tokenQS;
+  audio.play().catch(()=>{});
   try {
     const bytes = await (await fetch('/api/tts/' + turnId)).arrayBuffer();
     const buf = await audioCtx.decodeAudioData(bytes.slice(0));
     const src = audioCtx.createBufferSource();
-    src.buffer = buf; src.connect(analyser); src.start();  // no destination → silent, analyser only
+    src.buffer = buf; src.connect(analyser); src.start();
   } catch(e){}
   audio.onended = () => {
     orbLevel = 0;
@@ -158,6 +223,7 @@ async function speak(turnId, continuous){
 }
 
 /* ── mic capture + client-side silence detection ── */
+const VAD_SILENCE_MS = 800;   // trailing silence before the turn is considered over
 let mediaRecorder = null, micStream = null, micCtx = null, micAnalyser = null, recChunks = [], vadTimer = null, recMime = 'audio/webm';
 function pickMime(){
   for (const m of ['audio/mp4','audio/webm;codecs=opus','audio/webm']) {
@@ -179,7 +245,9 @@ async function startListening(){
   mediaRecorder.onstop = onRecordingStop;
   mediaRecorder.start();
 
-  // simple VAD: watch mic energy; stop after ~1.2s of silence following speech
+  // simple VAD: watch mic energy; stop after VAD_SILENCE_MS of silence following
+  // speech. 800ms is the aggressive end of the usual 800-1000ms band: snappier,
+  // but it will cut you off if you pause mid-thought. Raise it if that happens.
   micCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
   const srcNode = micCtx.createMediaStreamSource(micStream);
   micAnalyser = micCtx.createAnalyser(); micAnalyser.fftSize = 512;
@@ -196,7 +264,7 @@ async function startListening(){
     if (level > 16){ spoke = true; silentFor = 0; }
     else if (spoke){ silentFor += dt; }
     // stop on trailing silence, or hard cap at 15s
-    if ((spoke && silentFor > 1200) || (now - t0 > 15000)) { stopListening(); return; }
+    if ((spoke && silentFor > VAD_SILENCE_MS) || (now - t0 > 15000)) { stopListening(); return; }
     requestAnimationFrame(loop);
   })();
 }
@@ -224,7 +292,9 @@ async function onRecordingStop(){
 let lastTurnId = null;
 async function askChat(text){
   setStatus('processing');
-  let reply = '', signoff = false; lastTurnId = null;
+  stopSpeaking();                       // a new turn cancels the previous voice
+  speakContinuous = true;               // phone auto-listens after speaking
+  let reply = '', signoff = false, spoke = false; lastTurnId = null;
   try {
     const resp = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: text }) });
     if (resp.status === 401){ setStatus('error','not signed in'); showSubtitle('Not signed in — this device is missing its access token. Tap OK to paste it.', 'trillion'); promptForToken(); return; }
@@ -241,14 +311,16 @@ async function askChat(text){
           if (o.signoff){ signoff = true; break outer; }
           if (o.confirm){ showChip('⚠ Confirm: ' + o.confirm.name.replace(/_/g,' '), 'confirm'); pendingConfirm = o.confirm; continue; }
           if (o.tool){ showChip((TOOL_ICON[o.tool]||'⚙') + ' ' + o.tool.replace(/_/g,' '), null); continue; }
+          if (o.type === 'speak_segment'){ onSpeakSegment(o); spoke = true; continue; }
           if (o.turn_id){ lastTurnId = o.turn_id; continue; }
           if (o.chunk != null){ reply += o.chunk; showSubtitle(reply, 'trillion'); }
         } catch(e){}
       }
     }
   } catch(e){ showSubtitle('Connection error.', 'trillion'); }
-  if (signoff){ setStatus('idle'); showSubtitle('', 'trillion'); return; }
-  if (lastTurnId) speak(lastTurnId, true);
+  if (signoff){ stopSpeaking(); setStatus('idle'); showSubtitle('', 'trillion'); return; }
+  // Segments already play themselves; only fall back when none arrived.
+  if (!spoke && lastTurnId) speak(lastTurnId, true);
   else setStatus('idle');
 }
 
@@ -264,7 +336,9 @@ function onTap(){
     setStatus('idle');
     return;
   }
-  if (state === 'speaking'){ audio.pause(); audio.onended = null; orbLevel = 0; startListening(); return; }
+  // Interrupt: drop the whole queue, not just the playing clip — otherwise the
+  // next queued segment starts the moment this one is paused.
+  if (state === 'speaking'){ stopSpeaking(); startListening(); return; }
   if (state === 'listening'){ stopListening(); return; }
   if (state === 'processing') return;
   startListening();
