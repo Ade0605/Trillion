@@ -427,3 +427,42 @@ class RecentGeneratorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubagentGenerator(unittest.TestCase):
+    """The sub-agent roster used to be hand-written, so approving a new agent
+    silently made the doc wrong. These pin it to the live factory store."""
+
+    def test_renders_registered_agents(self):
+        from .generators import render_subagents
+        out = render_subagents([
+            {"slug": "notes-summarizer", "name": "Notes Summarizer",
+             "specialty": "Local note summarization. Extra sentence ignored."},
+            {"slug": "relay-x", "name": "Relay X", "specialty": "Routes messages."},
+        ])
+        self.assertIn("`dispatch_to_notes-summarizer`", out)
+        self.assertIn("`dispatch_to_relay-x`", out)
+        self.assertIn("**Notes Summarizer**", out)
+        self.assertIn("Local note summarization.", out)
+        self.assertIn("2 sub-agents registered", out)
+
+    def test_empty_roster_says_none_registered(self):
+        from .generators import render_subagents
+        out = render_subagents([])
+        self.assertIn("No sub-agents are registered", out)
+        self.assertIn("spawn_agent", out)
+
+    def test_unavailable_store_degrades_not_crashes(self):
+        """A broken store must not fail the pre-commit refresh."""
+        from .generators import render_subagents, _UNAVAILABLE
+        self.assertEqual(render_subagents(None), _UNAVAILABLE)
+
+    def test_agent_without_slug_is_skipped(self):
+        from .generators import render_subagents
+        out = render_subagents([{"slug": "", "name": "Broken"}])
+        self.assertNotIn("Broken", out)
+
+    def test_singular_plural(self):
+        from .generators import render_subagents
+        out = render_subagents([{"slug": "solo", "name": "Solo", "specialty": "x"}])
+        self.assertIn("1 sub-agent registered", out)

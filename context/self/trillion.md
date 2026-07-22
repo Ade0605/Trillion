@@ -95,6 +95,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-21 | `2d37ac1` | feat: open cosmic /face UI when EOD report runs |
 | 2026-07-21 | `159d177` | perf: pipeline LLM streaming into TTS with per-sentence segments |
 | 2026-07-20 | `98922ed` | perf: cut response latency and stop the scene stuttering |
 | 2026-07-20 | `461b63c` | feat(cosmos): speech surfaces from the orb instead of a floating box |
@@ -109,7 +110,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-19 | `0fd3038` | feat: read Yahoo calendar and speak a daily brief |
 | 2026-07-19 | `ba6389f` | chore: refresh self-knowledge, ignore .jcode, add CLAUDE.md |
 | 2026-07-17 | `01ae9d0` | Bump CI actions to Node 24 majors |
-| 2026-07-17 | `b63e5c4` | Allowlist git-ignored runtime path so CI drift check passes |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
@@ -123,13 +123,20 @@ Trillion is no longer a single agent — it can mint specialists on demand.
   are pure config (one `ConfigDrivenAgent` runtime reads the row) — they are
   never granted mutating tools automatically; anything beyond read-only surfaces
   as a wishlist. Capped at 5 spawns/day.
-- **Registered now:** `notes-summarizer` (dispatchable). Verify against
-  `data/factory_agents.json` rather than trusting this line.
 - **The design agent** (`design_screen`): spawns Claude Code against a per-project
   design system to build Next.js mockups.
 - The `/cosmos` constellation visualises these — Trillion's own capabilities
   (Scout, Scribe, Librarian, Scheduler) plus live Factory agents, which flare
   when dispatched.
+
+<!-- AUTO-START: subagents -->
+| Sub-agent | Specialty | Dispatch tool |
+| --- | --- | --- |
+| **Notes Summarizer** | Local Note Summarization & Digest Generation Agent | `dispatch_to_notes-summarizer` |
+
+_1 sub-agent registered and dispatchable._
+<!-- AUTO-END: subagents -->
+
 
 ## Calendar and the daily brief
 

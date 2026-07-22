@@ -85,6 +85,32 @@ def render_capabilities(registry) -> str:
     return "\n".join(rows)
 
 
+def render_subagents(agents) -> str:
+    """A table of the spawned sub-agents currently registered.
+
+    Read from the same store the factory dispatches from, so the doc can never
+    disagree with what is actually live. This section used to be hand-written,
+    which meant every approved agent silently made it wrong.
+    """
+    if agents is None:
+        return _UNAVAILABLE
+    if not agents:
+        return "_No sub-agents are registered. Trillion can mint them with `spawn_agent`._"
+
+    rows = ["| Sub-agent | Specialty | Dispatch tool |", "| --- | --- | --- |"]
+    for a in sorted(agents, key=lambda a: (a.get("slug") or "")):
+        slug = (a.get("slug") or "").strip()
+        if not slug:
+            continue
+        name = (a.get("name") or slug.replace("-", " ").title()).replace("|", "\\|")
+        spec = _first_sentence(a.get("specialty") or "").replace("|", "\\|") or "—"
+        rows.append(f"| **{name}** | {spec} | `dispatch_to_{slug}` |")
+    rows.append("")
+    n = len(rows) - 3
+    rows.append(f"_{n} sub-agent{'s' if n != 1 else ''} registered and dispatchable._")
+    return "\n".join(rows)
+
+
 def _key_present(env_key: str) -> bool:
     """True if the key is set in the environment or defined in the .env file.
 
@@ -216,7 +242,17 @@ def default_generators() -> dict:
             return _UNAVAILABLE
         return render_voice(cfg)
 
+    def subagents() -> str:
+        # Same store the factory dispatches from; a missing/broken store must
+        # degrade to a marked placeholder, never crash the pre-commit refresh.
+        try:
+            from trillion.factory import store as fstore
+            return render_subagents(fstore.list_active_agents())
+        except Exception:
+            return _UNAVAILABLE
+
     generators["capabilities"] = cap
+    generators["subagents"] = subagents
     generators["integrations"] = integ
     generators["voice"] = voice
     generators["recent"] = lambda: render_recent()
