@@ -46,6 +46,13 @@ def main() -> None:
     except ImportError:
         pass
 
+    # Working memory: resume the conversation thread across restarts
+    try:
+        from trillion.sessions import SessionStore
+        agent.attach_sessions(SessionStore())
+    except Exception:
+        pass
+
     # Agent Factory: mark this the live registry + hot-load approved agents
     try:
         from trillion.factory.tool import wire_live

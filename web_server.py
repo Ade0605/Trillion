@@ -55,6 +55,11 @@ def get_agent() -> Agent:
                 register_memory_tools(registry, memory)
                 a.attach_tools(registry)
                 a.attach_memory(memory)
+                try:  # working memory: resume the thread across restarts
+                    from trillion.sessions import SessionStore
+                    a.attach_sessions(SessionStore())
+                except Exception:
+                    pass
                 a.set_confirm_waiter(_web_confirm_waiter)
                 try:  # mark this the live registry + hot-load approved agents
                     from trillion.factory.tool import wire_live

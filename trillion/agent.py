@@ -100,6 +100,9 @@ class Agent:
         self.conversation: list[dict] = []
         self._tool_registry = None  # injected by Tier 2
         self._memory = None         # injected by Tier 4
+        self._sessions = None       # working-memory store; persists across restarts
+        self._session_id = None
+        self._max_window: int = self.config.get("max_window_messages", 40)
         self._confirm_waiter = _default_confirm_waiter  # how gated actions are confirmed
 
     def set_confirm_waiter(self, fn) -> None:
@@ -112,6 +115,52 @@ class Agent:
 
     def attach_memory(self, memory) -> None:
         self._memory = memory
+
+    def attach_sessions(self, store) -> None:
+        """Wire working memory: resolve the active session and reload its window
+        so the conversation survives a restart. A prior run may have been cut off
+        mid tool-loop, so repair before use."""
+        self._sessions = store
+        try:
+            sid, is_new = store.resolve_active()
+            self._session_id = sid
+            if not is_new:
+                self.conversation = store.load(sid)
+                self._repair_conversation()
+                self._bound_window()
+        except Exception:
+            self._session_id = None   # degrade to in-memory; never block startup
+
+    def _bound_window(self) -> None:
+        """Cap the active window without ever splitting a tool_use/tool_result
+        pair — cutting between them re-creates the orphaned-tool_use 400 bug.
+
+        A turn boundary is a user message with plain string content (real user
+        input, not a tool_result round). Keep whole turns from the newest
+        boundary that leaves the window at or under the limit.
+        """
+        limit = getattr(self, "_max_window", 0)
+        if limit <= 0 or len(self.conversation) <= limit:
+            return
+        starts = [
+            i for i, m in enumerate(self.conversation)
+            if m.get("role") == "user" and isinstance(m.get("content"), str)
+        ]
+        for idx in starts:
+            if len(self.conversation) - idx <= limit:
+                self.conversation = self.conversation[idx:]
+                return
+        if starts:                       # every turn is huge; keep just the last
+            self.conversation = self.conversation[starts[-1]:]
+
+    def _persist(self) -> None:
+        store = getattr(self, "_sessions", None)
+        sid = getattr(self, "_session_id", None)
+        if store and sid:
+            try:
+                store.save(sid, self.conversation)
+            except Exception:
+                pass                     # persistence must never break a turn
 
     def _self_knowledge_summary(self) -> str:
         sk = self.config.get("self_knowledge", {}) or {}
@@ -203,6 +252,7 @@ class Agent:
         # malformed history to the API.
         self._repair_conversation()
         self.conversation.append({"role": "user", "content": user_input})
+        self._persist()   # the user turn survives even if the reply is interrupted
         tool_calls_this_turn = 0
 
         while True:
@@ -236,12 +286,14 @@ class Agent:
                 err_msg = f"\n[Trillion] {error}"
                 yield err_msg
                 self.conversation.append({"role": "assistant", "content": err_msg})
+                self._bound_window(); self._persist()
                 return
 
             if not tool_requests:
                 # Plain text reply — done
                 full_reply = "".join(chunks)
                 self.conversation.append({"role": "assistant", "content": full_reply})
+                self._bound_window(); self._persist()
                 return
 
             # Build the assistant message with all content blocks
@@ -347,3 +399,9 @@ class Agent:
 
     def reset(self) -> None:
         self.conversation = []
+        if self._sessions:
+            try:
+                self._session_id = self._sessions.start_new()
+                self._persist()
+            except Exception:
+                pass
