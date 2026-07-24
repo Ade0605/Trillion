@@ -95,6 +95,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-24 | `460466f` | feat: persist working memory so the conversation survives a restart |
 | 2026-07-22 | `f178b19` | feat(self-knowledge): generate the sub-agent roster instead of writing it |
 | 2026-07-21 | `2d37ac1` | feat: open cosmic /face UI when EOD report runs |
 | 2026-07-21 | `159d177` | perf: pipeline LLM streaming into TTS with per-sentence segments |
@@ -109,7 +110,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-19 | `d2c7c47` | fix: send Basic auth preemptively to Yahoo CalDAV |
 | 2026-07-19 | `04ecaa3` | chore: use a fake email in the masking test fixture |
 | 2026-07-19 | `0fd3038` | feat: read Yahoo calendar and speak a daily brief |
-| 2026-07-19 | `ba6389f` | chore: refresh self-knowledge, ignore .jcode, add CLAUDE.md |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
