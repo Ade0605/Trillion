@@ -517,7 +517,7 @@ from trillion.security import http_guard
 # Page shells are served without a token so the browser can bootstrap; the JS
 # then attaches the token to every API call. CSP reports are unauthenticated by
 # nature. Everything else is guarded.
-_OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "service_worker", "phone_icon", "design_preview", "factory_page", "cosmos", "cosmos_agents", "memory_page"}
+_OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "service_worker", "phone_icon", "design_preview", "factory_page", "cosmos", "cosmos_agents", "memory_page", "mind_page"}
 
 # CSP shipped report-only first (see security/audit_shield.CSP_MODE). Widen only
 # by what actually gets blocked, then flip to enforcing.
@@ -740,6 +740,67 @@ def factory_page():
 def memory_page():
     path = Path(__file__).parent / "static" / "memory.html"
     return path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+# The knowledge manifest — the only paths the mind map will preview (no arbitrary reads).
+_KNOWLEDGE_MANIFEST = ["AGENT.md", "context/self/trillion.md", "config.yml"]
+
+
+def _mind_sources():
+    from trillion.memory_store import FileMemoryStore
+    from trillion.sessions import SessionStore
+    sources = {"knowledge_files": _KNOWLEDGE_MANIFEST}
+    try:
+        sources["memory_store"] = FileMemoryStore()
+    except Exception:
+        pass
+    try:
+        sources["session_store"] = SessionStore()
+    except Exception:
+        pass
+    try:
+        from trillion.factory import store as fstore
+        sources["factory_store"] = fstore
+    except Exception:
+        pass
+    try:
+        sources["registry"] = get_agent()._tool_registry
+    except Exception:
+        pass
+    return sources
+
+
+@app.get("/mind")
+def mind_page():
+    path = Path(__file__).parent / "static" / "mind.html"
+    return path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@app.get("/api/mind-map")
+def mind_map():
+    from trillion.mind_map import build_skeleton
+    src = _mind_sources()
+
+    def embed_fn(texts):
+        try:
+            from trillion.memory_recall import embed_texts
+            return embed_texts(texts)
+        except Exception:
+            return None
+
+    return build_skeleton(embed_fn=embed_fn, **src)
+
+
+@app.get("/api/mind-map/node/<path:node_id>")
+def mind_node(node_id):
+    from trillion.mind_map import node_detail
+    src = _mind_sources()
+    detail = node_detail(node_id, memory_store=src.get("memory_store"),
+                         factory_store=src.get("factory_store"),
+                         knowledge_files=src.get("knowledge_files"))
+    if detail is None:
+        return {"error": "not found"}, 404
+    return detail
 
 
 @app.get("/memory/data")
