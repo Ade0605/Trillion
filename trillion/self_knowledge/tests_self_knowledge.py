@@ -413,7 +413,7 @@ class RouteEnumerationTests(unittest.TestCase):
     def test_live_server_front_doors_match_the_doc(self):
         # The real set of HTML front doors (fixture _FIVE_DOORS above is a
         # controlled sample for the count-logic tests, not the live truth).
-        live_doors = ("/", "/cosmos", "/face", "/factory", "/memory", "/phone")
+        live_doors = ("/", "/cosmos", "/face", "/factory", "/memory", "/mind", "/phone")
         routes = _page_routes()
         if routes is None:
             self.skipTest("web_server.py not readable from here")
