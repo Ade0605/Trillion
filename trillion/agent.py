@@ -116,6 +116,39 @@ class Agent:
     def attach_memory(self, memory) -> None:
         self._memory = memory
 
+    def attach_file_memory(self, store) -> None:
+        """Use the file-backed typed store with per-turn recall, instead of
+        injecting every stored fact into every prompt."""
+        self._fmem = store
+        self._recall_k = self.config.get("memory_recall_k", 6)
+        # Below this count, keep every memory in mind each turn. That's cheap at
+        # a handful of memories, and it's the honest top-k when count <= k — and
+        # crucially it needs no embedding call, so recall can't be broken by
+        # OmniRoute (a flaky logon task) being down. Semantic ranking only earns
+        # its keep once memories number in the dozens+.
+        self._recall_always_below = self.config.get("memory_recall_always_below", 20)
+        self._recalled: list[str] = []
+
+    def _recall_for_turn(self, query: str) -> None:
+        """Pick the memories relevant to *this* turn and stash their lines for
+        the volatile prompt block. Never raises — recall must not break a turn."""
+        store = getattr(self, "_fmem", None)
+        if not store:
+            return
+        self._recalled = []
+        try:
+            total = store.count()
+            if total == 0:
+                return
+            if total <= getattr(self, "_recall_always_below", 20):
+                mems = store.all()                       # few enough: keep all
+            else:
+                from .memory_recall import recall
+                mems = recall(query, store, k=getattr(self, "_recall_k", 6)).memories
+            self._recalled = [f"[{m.type}] {m.body.strip()}" for m in mems]
+        except Exception:
+            self._recalled = []
+
     def attach_sessions(self, store) -> None:
         """Wire working memory: resolve the active session and reload its window
         so the conversation survives a restart. A prior run may have been cut off
@@ -179,7 +212,10 @@ class Agent:
         """System prompt as cacheable content blocks: a stable prefix (marked for
         caching) followed by a small volatile block (date + memory)."""
         stable = _stable_prompt(self._self_knowledge_summary())
-        facts = self._memory.load_relevant() if self._memory else []
+        if getattr(self, "_fmem", None) is not None:
+            facts = getattr(self, "_recalled", [])          # per-turn semantic recall
+        else:
+            facts = self._memory.load_relevant() if self._memory else []
         volatile = _volatile_prompt(facts)
 
         blocks: list[dict] = [
@@ -253,6 +289,7 @@ class Agent:
         self._repair_conversation()
         self.conversation.append({"role": "user", "content": user_input})
         self._persist()   # the user turn survives even if the reply is interrupted
+        self._recall_for_turn(user_input)   # inject only the memories relevant to this turn
         tool_calls_this_turn = 0
 
         while True:

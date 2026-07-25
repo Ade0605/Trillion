@@ -51,10 +51,18 @@ def get_agent() -> Agent:
             if _agent is None:
                 a = Agent()
                 registry = build_registry()
-                memory = MemoryStore()
-                register_memory_tools(registry, memory)
                 a.attach_tools(registry)
-                a.attach_memory(memory)
+                try:  # long-term memory: file-backed store + per-turn recall
+                    from trillion.memory_store import FileMemoryStore, migrate_from_json
+                    from trillion.memory_tools import register_file_memory_tools
+                    fmem = FileMemoryStore()
+                    migrate_from_json(fmem)                 # one-time, idempotent
+                    register_file_memory_tools(registry, fmem)
+                    a.attach_file_memory(fmem)
+                except Exception:
+                    memory = MemoryStore()                 # fall back to the legacy store
+                    register_memory_tools(registry, memory)
+                    a.attach_memory(memory)
                 try:  # working memory: resume the thread across restarts
                     from trillion.sessions import SessionStore
                     a.attach_sessions(SessionStore())

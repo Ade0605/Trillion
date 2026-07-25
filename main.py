@@ -36,15 +36,24 @@ def main() -> None:
     except ImportError:
         pass
 
-    # Tier 4: attach memory when available
+    # Long-term memory: file-backed typed store + per-turn semantic recall
     try:
-        from trillion.memory import MemoryStore, register_memory_tools
-        memory = MemoryStore()
-        agent.attach_memory(memory)
+        from trillion.memory_store import FileMemoryStore, migrate_from_json
+        from trillion.memory_tools import register_file_memory_tools
+        fmem = FileMemoryStore()
+        migrate_from_json(fmem)
+        agent.attach_file_memory(fmem)
         if registry:
-            register_memory_tools(registry, memory)
-    except ImportError:
-        pass
+            register_file_memory_tools(registry, fmem)
+    except Exception:
+        try:
+            from trillion.memory import MemoryStore, register_memory_tools
+            memory = MemoryStore()
+            agent.attach_memory(memory)
+            if registry:
+                register_memory_tools(registry, memory)
+        except ImportError:
+            pass
 
     # Working memory: resume the conversation thread across restarts
     try:

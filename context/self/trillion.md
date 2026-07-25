@@ -49,18 +49,18 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `design_screen` | Compose a single award-quality Next.js + shadcn mockup screen by spawning Claude Code against a per-project design system. | yes |
 | `dispatch_to_notes-summarizer` | Dispatch a task to the 'Notes Summarizer' sub-agent (Local Note Summarization & Digest Generation Agent). | no |
 | `draft_message` | Compose a draft message or email for the user to review. | yes |
-| `forget_fact` | Remove a stored memory that is wrong or no longer relevant, by its id. | no |
+| `forget` | Delete a stored memory by its id when it is wrong or no longer true. | yes |
 | `list_calendar_events` | Look at the user's calendar. | no |
-| `list_memories` | List all memories currently stored about the user. | no |
+| `list_memories` | List all stored long-term memories, grouped by type. | no |
 | `list_notes` | List all note files available in the notes directory. | no |
 | `list_recent_sessions` | List the user's most recent Claude Code sessions — title, project, and how long ago each was active. | no |
 | `list_reminders` | List pending (or all) reminders. | no |
 | `omniroute_status` | Check OmniRoute (the local LLM router): whether it's running, its version, how many tokens have been used, and which model was routed most recently. | no |
 | `read_note` | Read the full contents of a specific note file by filename. | no |
-| `remember_fact` | Remember a fact about the user or their preferences for future conversations. | no |
+| `recall` | Search your long-term memories for anything relevant to a query. | no |
+| `remember` | Save a durable fact worth keeping across future sessions — something the user taught you, a correction they made, a lasting preference, or a decision on one of their projects. | no |
 | `search_notes` | Search your local notes and documents for a keyword or phrase. | no |
 | `spawn_agent` | Mint a NEW specialist sub-agent. | yes |
-| `update_memory` | Correct or update a previously stored memory by its id. | no |
 | `web_search` | Search the web for current information, facts, definitions, or news. | yes |
 
 _19 tools registered._
@@ -95,6 +95,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-25 | `893c2ff` | feat: semantic memory recall with a keyword safety net |
 | 2026-07-24 | `4c84cbe` | feat: file-backed typed long-term memory + migration |
 | 2026-07-24 | `460466f` | feat: persist working memory so the conversation survives a restart |
 | 2026-07-22 | `f178b19` | feat(self-knowledge): generate the sub-agent roster instead of writing it |
@@ -109,7 +110,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-20 | `0ef4d8c` | feat: supervise the web server so it restarts in seconds |
 | 2026-07-19 | `3841f28` | chore: teach self-knowledge about the calendar and morning brief |
 | 2026-07-19 | `d2c7c47` | fix: send Basic auth preemptively to Yahoo CalDAV |
-| 2026-07-19 | `04ecaa3` | chore: use a fake email in the masking test fixture |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents

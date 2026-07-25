@@ -42,10 +42,17 @@ def live_registry():
     into a dead registry instead of the host's.
     """
     from trillion.tools.registry import build_registry
-    from trillion.memory import MemoryStore, register_memory_tools
 
     registry = build_registry()
-    register_memory_tools(registry, MemoryStore())
+    # Register memory tools the same way the hosts do, so the doc matches
+    # runtime: the file-backed store, with a legacy fallback.
+    try:
+        from trillion.memory_store import FileMemoryStore
+        from trillion.memory_tools import register_file_memory_tools
+        register_file_memory_tools(registry, FileMemoryStore())
+    except Exception:
+        from trillion.memory import MemoryStore, register_memory_tools
+        register_memory_tools(registry, MemoryStore())
     try:
         from trillion.factory.runtime import load_active_agents
         load_active_agents(registry)
