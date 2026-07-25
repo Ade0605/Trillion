@@ -1,4 +1,354 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Trillion — Mind</title>
-<style>body{margin:0;background:#05070B;color:#8fb6c9;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh}</style>
-</head><body><div>Mind scene loads here (Tier 2+). Data contract is live at <code>/api/mind-map</code>.</div></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trillion — Mind</title>
+<style>
+  *{ box-sizing:border-box; margin:0; }
+  html,body{ height:100%; background:#05070B; overflow:hidden;
+    font-family:'Segoe UI',system-ui,sans-serif; color:#cfe0ea; }
+  #c{ position:fixed; inset:0; display:block; }
+  #labels{ position:fixed; inset:0; pointer-events:none; z-index:2; }
+  .lbl{ position:absolute; transform:translate(-50%,-50%); font-size:12px; letter-spacing:.04em;
+    color:#9fc4d6; text-shadow:0 0 8px #05070b,0 0 8px #05070b; white-space:nowrap; }
+  .lbl.region{ font-size:11px; text-transform:uppercase; letter-spacing:.14em; opacity:.7; }
+  #hud{ position:fixed; top:14px; left:16px; z-index:3; font-size:12px; color:#7f9fb0; }
+  #hud b{ color:#cfe0ea; font-weight:600; letter-spacing:.06em; }
+  #stats{ margin-top:4px; color:#5f7d8e; }
+  #legend{ position:fixed; top:14px; right:16px; z-index:3; display:flex; flex-direction:column; gap:6px; }
+  .chip{ display:flex; align-items:center; gap:7px; font-size:11px; color:#8fb0c0; cursor:pointer;
+    padding:3px 9px; border:1px solid #16222e; border-radius:20px; background:#0a121cAA; user-select:none; }
+  .chip .dot{ width:8px; height:8px; border-radius:50%; }
+  .chip.off{ opacity:.35; }
+  #tip{ position:fixed; z-index:4; pointer-events:none; background:#0a1119ee; border:1px solid #1b2a38;
+    border-radius:8px; padding:6px 10px; font-size:12px; max-width:260px; display:none; }
+  #tip .t{ color:#eaf7ff; font-weight:600; } #tip .s{ color:#7f9fb0; font-size:11px; }
+  #panel{ position:fixed; top:0; right:-380px; width:360px; height:100%; z-index:5;
+    background:#070c12f2; border-left:1px solid #14202c; padding:22px; overflow-y:auto;
+    transition:right .28s cubic-bezier(.2,.8,.2,1); }
+  #panel.open{ right:0; }
+  #panel h2{ font-size:16px; margin-bottom:4px; }
+  #panel .badge{ display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.08em;
+    padding:2px 8px; border-radius:20px; background:#12202c; color:#7fb0c4; margin:8px 0; }
+  #panel .body{ font-size:13px; color:#b8cdd9; white-space:pre-wrap; line-height:1.6; margin-top:8px; }
+  #panel .meta{ font-size:12px; color:#5f7d8e; margin-top:12px; }
+  #panel a{ color:#67E8F9; cursor:pointer; text-decoration:none; }
+  #panel .x{ position:absolute; top:14px; right:16px; cursor:pointer; color:#5f7d8e; }
+  #search{ position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:3;
+    width:min(420px,70vw); background:#0a1119cc; border:1px solid #1b2a38; border-radius:10px;
+    padding:8px 12px; color:#eaf7ff; outline:none; font-size:13px; }
+  #err{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:9;
+    color:#e88f98; font-size:15px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="hud"><b>TRILLION · MIND</b><div id="stats">loading…</div></div>
+<div id="legend"></div>
+<div id="tip"></div>
+<input id="search" placeholder="search the mind…">
+<div id="panel"><span class="x" id="panelX">✕</span><div id="panelBody"></div></div>
+<div id="err"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+/* ═══ token bootstrap (fetch the private skeleton) ═══ */
+let TOKEN='';
+(function(){ try{ const u=new URL(location.href),q=u.searchParams.get('token');
+  if(q){ localStorage.setItem('trillion_token',q); u.searchParams.delete('token'); history.replaceState({},'',u.toString()); }
+  TOKEN=localStorage.getItem('trillion_token')||'';
+  const _f=window.fetch; window.fetch=(url,opt)=>{ opt=opt||{}; const h={}; if(TOKEN)h.Authorization='Bearer '+TOKEN;
+    opt.headers=Object.assign({},opt.headers,h); return _f(url,opt); };
+}catch(e){} })();
+
+const fail=(m)=>{ const e=document.getElementById('err'); e.textContent=m; e.style.display='flex'; throw new Error(m); };
+
+/* ═══ regions.js — pure layout math ═══ */
+const ANCHORS = {
+  core:      new THREE.Vector3(0,0,0),
+  memory:    new THREE.Vector3(-11,2,-3),
+  working:   new THREE.Vector3(6,7,4),
+  agents:    new THREE.Vector3(10,-1,-4),
+  knowledge: new THREE.Vector3(-4,-8,5),
+  rim:       new THREE.Vector3(3,-2,11),
+};
+function hash(str){ let h=2166136261; for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0)/4294967295; }
+
+function layout(nodes, edges){
+  const pos = new Map();
+  const byRegion = {}; for(const n of nodes){ (byRegion[n.region]=byRegion[n.region]||[]).push(n); }
+  // core
+  for(const n of (byRegion.core||[])){
+    if(n.type==='agent') pos.set(n.id, ANCHORS.core.clone());
+    else { const a=hash(n.id)*6.28; pos.set(n.id, ANCHORS.core.clone().add(new THREE.Vector3(Math.cos(a)*2.4,0.6,Math.sin(a)*2.4))); }
+  }
+  // memory — force-directed, baked once
+  const mem = byRegion.memory||[];
+  if(mem.length){
+    const P=mem.map(n=>ANCHORS.memory.clone().add(new THREE.Vector3((hash(n.id)-.5)*6,(hash(n.id+'y')-.5)*6,(hash(n.id+'z')-.5)*6)));
+    const V=mem.map(()=>new THREE.Vector3());
+    const idx=new Map(mem.map((n,i)=>[n.id,i]));
+    const simEdges=edges.filter(e=>e.kind==='similarity'&&idx.has(e.source)&&idx.has(e.target));
+    for(let it=0;it<120;it++){
+      for(let i=0;i<mem.length;i++){ const f=new THREE.Vector3();
+        for(let j=0;j<mem.length;j++){ if(i===j)continue; const d=P[i].clone().sub(P[j]); const l=Math.max(d.length(),0.4); f.add(d.multiplyScalar(1.4/(l*l))); }
+        f.add(ANCHORS.memory.clone().sub(P[i]).multiplyScalar(0.02));
+        V[i].add(f).multiplyScalar(0.82); }
+      for(const e of simEdges){ const a=idx.get(e.source),b=idx.get(e.target); const d=P[b].clone().sub(P[a]); const l=d.length();
+        const s=d.multiplyScalar((l-2.2)*0.03*e.weight); V[a].add(s); V[b].sub(s); }
+      for(let i=0;i<mem.length;i++) P[i].add(V[i]);
+    }
+    mem.forEach((n,i)=>pos.set(n.id,P[i]));
+  }
+  // working — ring
+  const wk=byRegion.working||[]; wk.forEach((n,i)=>{ const a=i/Math.max(wk.length,1)*6.28;
+    pos.set(n.id, ANCHORS.working.clone().add(new THREE.Vector3(Math.cos(a)*3,Math.sin(a*2)*0.6,Math.sin(a)*3))); });
+  // agents — vertical arc, tools cluster around host
+  const subs=(byRegion.agents||[]).filter(n=>n.type==='subagent');
+  subs.forEach((n,i)=>{ const t=subs.length>1?i/(subs.length-1):0.5; const a=(t-0.5)*1.6;
+    const p=ANCHORS.agents.clone().add(new THREE.Vector3(Math.sin(a)*1.5,(t-0.5)*6,Math.cos(a)*1.5)); pos.set(n.id,p); });
+  (byRegion.agents||[]).filter(n=>n.type==='agent-tool').forEach(n=>{
+    const host=n.id.split(':tool:')[0]; const hp=pos.get(host)||ANCHORS.agents;
+    pos.set(n.id, hp.clone().add(new THREE.Vector3((hash(n.id)-.5)*1.6,(hash(n.id+'y')-.5)*1.6,(hash(n.id+'z')-.5)*1.6))); });
+  // knowledge — flat grid
+  const kn=byRegion.knowledge||[]; const cols=Math.ceil(Math.sqrt(kn.length||1));
+  kn.forEach((n,i)=>{ const x=(i%cols)-(cols-1)/2, y=Math.floor(i/cols)-(cols-1)/2;
+    pos.set(n.id, ANCHORS.knowledge.clone().add(new THREE.Vector3(x*2,0,y*2))); });
+  // rim — golden-angle sphere by category
+  const rim=byRegion.rim||[]; const GA=Math.PI*(3-Math.sqrt(5));
+  rim.forEach((n,i)=>{ const y=1-(i/Math.max(rim.length-1,1))*2; const r=Math.sqrt(Math.max(1-y*y,0)); const th=GA*i;
+    pos.set(n.id, ANCHORS.rim.clone().add(new THREE.Vector3(Math.cos(th)*r*3.2,y*3.2,Math.sin(th)*r*3.2))); });
+  return pos;
+}
+
+/* ═══ scene.js — void, bloom, loop ═══ */
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
+const scene=new THREE.Scene(); scene.background=new THREE.Color('#05070B'); scene.fog=new THREE.FogExp2('#05070B',0.012);
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,400); camera.position.set(0,6,34);
+const controls=new OrbitControls(camera,canvas); controls.enableDamping=true; controls.autoRotate=true; controls.autoRotateSpeed=0.35;
+controls.minDistance=8; controls.maxDistance=90;
+const composer=new EffectComposer(renderer); composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.15,0.6,0.72); composer.addPass(bloom);
+
+// starfield
+(function(){ const N=600,pos=new Float32Array(N*3),ph=new Float32Array(N),sz=new Float32Array(N);
+  for(let i=0;i<N;i++){ const r=80+Math.random()*80,t=Math.random()*6.28,p=Math.acos(2*Math.random()-1);
+    pos[i*3]=r*Math.sin(p)*Math.cos(t); pos[i*3+1]=r*Math.cos(p); pos[i*3+2]=r*Math.sin(p)*Math.sin(t);
+    ph[i]=Math.random()*6.28; sz[i]=1+Math.random()*2; }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  g.setAttribute('aPhase',new THREE.BufferAttribute(ph,1)); g.setAttribute('aSize',new THREE.BufferAttribute(sz,1));
+  const m=new THREE.ShaderMaterial({ uniforms:{uTime:{value:0}}, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+    vertexShader:`attribute float aPhase,aSize; uniform float uTime; varying float vT;
+      void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=aSize*180.0/(-mv.z); gl_Position=projectionMatrix*mv;
+      vT=0.5+0.5*sin(uTime*1.5+aPhase); }`,
+    fragmentShader:`varying float vT; void main(){ float d=length(gl_PointCoord-0.5); if(d>0.5)discard;
+      gl_FragColor=vec4(vec3(0.8,0.9,1.0)*(vT*1.4), smoothstep(0.5,0.0,d)); }` });
+  scene.add(new THREE.Points(g,m)); })();
+
+// membrane (abs fresnel so only the silhouette lights, from inside or out)
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(26,48,48),
+  new THREE.ShaderMaterial({ transparent:true, side:THREE.BackSide, depthWrite:false, blending:THREE.AdditiveBlending,
+    uniforms:{uColor:{value:new THREE.Color('#2DD4A8')}},
+    vertexShader:`varying vec3 vN,vV; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vN=normalize(normalMatrix*normal); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform vec3 uColor; varying vec3 vN,vV; void main(){ float f=pow(1.0-abs(dot(vN,vV)),3.0); gl_FragColor=vec4(uColor,f*0.06); }` })));
+
+/* ═══ nodes.js ═══ */
+const NODE_VS=`
+  attribute float aPhase, aFresh; uniform float uTime; varying float vFacing, vFresh;
+  void main(){ vec3 p=position*(1.0+0.06*aFresh*sin(uTime*(3.5+2.5*fract(aPhase*0.7))+aPhase*6.28));
+    vec4 mv=modelViewMatrix*instanceMatrix*vec4(p,1.0);
+    vec3 n=normalize(mat3(instanceMatrix)*normal); n=normalize(normalMatrix*n);
+    vFacing=max(dot(n,normalize(-mv.xyz)),0.0); vFresh=aFresh; gl_Position=projectionMatrix*mv; }`;
+const NODE_FS=`
+  varying float vFacing, vFresh; uniform vec3 uColor;
+  void main(){ float core=pow(vFacing,2.5), rim=pow(1.0-vFacing,2.0);
+    vec3 col=mix(uColor,vec3(1.0),core*0.85)+uColor*rim*1.4; col*=0.45+0.75*vFresh;
+    float a=core*0.95+rim*0.6; gl_FragColor=vec4(col,a); }`;
+
+const groups={};            // region -> THREE.Group
+const idOfInstance={};      // region -> [id,...]
+function buildNodes(nodes, pos){
+  const byRegion={}; for(const n of nodes) (byRegion[n.region]=byRegion[n.region]||[]).push(n);
+  const geo=new THREE.SphereGeometry(1,20,14);
+  for(const [region,list] of Object.entries(byRegion)){
+    const g=new THREE.Group(); groups[region]=g; scene.add(g);
+    if(region==='core'){ buildCore(list,pos,g); continue; }
+    const col=new THREE.Color(list[0].color);
+    const mesh=new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({
+      uniforms:{uTime:SHARED.uTime,uColor:{value:col}}, transparent:true, depthWrite:false,
+      blending:THREE.AdditiveBlending, vertexShader:NODE_VS, fragmentShader:NODE_FS }), list.length);
+    const ph=new Float32Array(list.length), fr=new Float32Array(list.length);
+    const m=new THREE.Matrix4(); const ids=[];
+    list.forEach((n,i)=>{ const p=pos.get(n.id)||ANCHORS[region];
+      m.makeScale(n.size*0.5,n.size*0.5,n.size*0.5); m.setPosition(p);
+      mesh.setMatrixAt(i,m); ph[i]=hash(n.id); fr[i]=n.freshness; ids.push(n.id); });
+    mesh.instanceMatrix.needsUpdate=true;
+    mesh.geometry.setAttribute('aPhase',new THREE.InstancedBufferAttribute(ph,1));
+    mesh.geometry.setAttribute('aFresh',new THREE.InstancedBufferAttribute(fr,1));
+    mesh.userData.ids=ids; idOfInstance[region]=ids; g.add(mesh);
+  }
+}
+function buildCore(list,pos,g){
+  // layered sun
+  const sun=new THREE.Mesh(new THREE.SphereGeometry(1.4,32,32),
+    new THREE.MeshBasicMaterial({color:'#eafff8',transparent:true,opacity:0.9,blending:THREE.AdditiveBlending}));
+  g.add(sun);
+  const glow=new THREE.Mesh(new THREE.SphereGeometry(2.1,32,32), new THREE.ShaderMaterial({
+    transparent:true,side:THREE.BackSide,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uColor:{value:new THREE.Color('#2DD4A8')}},
+    vertexShader:`varying float vF; void main(){ vec4 mv=modelViewMatrix*vec4(position,1.0); vec3 n=normalize(normalMatrix*normal); vF=pow(1.0-abs(dot(n,normalize(-mv.xyz))),3.0); gl_Position=projectionMatrix*mv; }`,
+    fragmentShader:`uniform vec3 uColor; varying float vF; void main(){ gl_FragColor=vec4(uColor,vF*0.9); }` }));
+  g.add(glow); g.userData.sun=sun;
+  // two prompt rings — spin about Y
+  const rings=[];
+  [[2.8,'#2DD4A8',0],[3.5,'#67E8F9',0.5]].forEach(([r,c,tilt])=>{
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(r,0.02,8,80),
+      new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:0.5,blending:THREE.AdditiveBlending}));
+    ring.rotation.x=Math.PI/2 + tilt; g.add(ring); rings.push(ring);
+  });
+  g.userData.rings=rings;
+}
+
+/* ═══ edges.js — arced beziers merged per kind ═══ */
+const EDGE_COLORS={ similarity:'#A78BFA', recall:'#67E8F9', working:'#67E8F9', dispatch:'#E88FB3',
+  'has-tool':'#E88FB3', loads:'#F5A524', capability:'#8B93A1' };
+function buildEdges(edges,pos){
+  const byKind={}; for(const e of edges){ if(pos.get(e.source)&&pos.get(e.target)) (byKind[e.kind]=byKind[e.kind]||[]).push(e); }
+  const eg=new THREE.Group(); scene.add(eg);
+  for(const [kind,list] of Object.entries(byKind)){
+    const verts=[];
+    for(const e of list){ const a=pos.get(e.source),b=pos.get(e.target);
+      const mid=a.clone().add(b).multiplyScalar(0.5);
+      const perp=b.clone().sub(a).cross(mid.clone().normalize()).normalize().multiplyScalar(a.distanceTo(b)*0.12);
+      const curve=new THREE.QuadraticBezierCurve3(a,mid.add(perp),b);
+      const pts=curve.getPoints(20);
+      for(let i=0;i<pts.length-1;i++){ verts.push(pts[i].x,pts[i].y,pts[i].z,pts[i+1].x,pts[i+1].y,pts[i+1].z); }
+    }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+    eg.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:EDGE_COLORS[kind]||'#556',
+      transparent:true,opacity:0.16,blending:THREE.AdditiveBlending,depthWrite:false})));
+  }
+}
+
+/* ═══ shared time + frame loop ═══ */
+const SHARED={ uTime:{value:0} };
+const clock=new THREE.Clock();
+let running=true, fpsAcc=0, fpsN=0, lowSince=0;
+function tick(){
+  if(!running) return;
+  const dt=Math.min(clock.getDelta(),0.05); SHARED.uTime.value=clock.elapsedTime;
+  controls.update();
+  const core=groups.core;
+  if(core){ if(core.userData.sun) core.userData.sun.scale.setScalar(1+0.05*Math.sin(clock.elapsedTime*1.3));
+    (core.userData.rings||[]).forEach((r,i)=>r.rotation.y+=dt*(0.3+i*0.2)); }
+  // starfield/membrane share SHARED.uTime via their own uniforms? set here:
+  scene.traverse(o=>{ if(o.material&&o.material.uniforms&&o.material.uniforms.uTime) o.material.uniforms.uTime.value=clock.elapsedTime; });
+  updateLabels();
+  composer.render();
+  // governor
+  fpsAcc+=dt; fpsN++;
+  if(fpsAcc>=1){ const fps=fpsN/fpsAcc; if(fps<30){ lowSince+=fpsAcc; if(lowSince>3 && bloom.enabled){ bloom.enabled=false; console.info('[mind] low fps — bloom off'); } } else lowSince=0; fpsAcc=0; fpsN=0; }
+  requestAnimationFrame(tick);
+}
+
+/* ═══ inspector.js — labels, hover, click, search, legend ═══ */
+const labelsEl=document.getElementById('labels'); const regionLabels={};
+let ALL_NODES=[], POS=new Map();
+function makeRegionLabels(){
+  for(const [r,anchor] of Object.entries(ANCHORS)){ if(r==='core')continue;
+    const d=document.createElement('div'); d.className='lbl region'; d.textContent=r; labelsEl.appendChild(d); regionLabels[r]={el:d,pos:anchor}; }
+}
+const _v=new THREE.Vector3();
+function project(p){ _v.copy(p).project(camera); return {x:(_v.x*.5+.5)*innerWidth,y:(-_v.y*.5+.5)*innerHeight,vis:_v.z<1}; }
+function updateLabels(){ for(const {el,pos} of Object.values(regionLabels)){ const s=project(pos);
+  el.style.opacity=s.vis?0.7:0; el.style.left=s.x+'px'; el.style.top=s.y+'px'; } }
+
+const ray=new THREE.Raycaster(); const mouse=new THREE.Vector2(); const tip=document.getElementById('tip');
+let hoverId=null;
+function visibleUp(o){ while(o){ if(!o.visible) return false; o=o.parent; } return true; }
+function pick(ev){ mouse.x=(ev.clientX/innerWidth)*2-1; mouse.y=-(ev.clientY/innerHeight)*2+1; ray.setFromCamera(mouse,camera);
+  const meshes=Object.values(groups).flatMap(g=>g.children.filter(c=>c.isInstancedMesh&&visibleUp(c)));
+  const hit=ray.intersectObjects(meshes,false)[0];
+  if(hit&&hit.instanceId!=null){ const ids=hit.object.userData.ids; return ids&&ids[hit.instanceId]; } return null; }
+canvas.addEventListener('pointermove',ev=>{ const id=pick(ev); hoverId=id;
+  if(id){ const n=ALL_NODES.find(x=>x.id===id); tip.style.display='block'; tip.style.left=(ev.clientX+14)+'px'; tip.style.top=(ev.clientY+14)+'px';
+    tip.innerHTML=''; const t=document.createElement('div'); t.className='t'; t.textContent=n.label; const s=document.createElement('div'); s.className='s'; s.textContent=n.region+(n.extra&&n.extra.mtype?' · '+n.extra.mtype:'');
+    tip.appendChild(t); tip.appendChild(s); } else tip.style.display='none'; });
+let downXY=null;
+canvas.addEventListener('pointerdown',ev=>downXY=[ev.clientX,ev.clientY]);
+canvas.addEventListener('pointerup',ev=>{ if(!downXY)return; const moved=Math.hypot(ev.clientX-downXY[0],ev.clientY-downXY[1]); downXY=null;
+  if(moved>6)return; const id=pick(ev); if(id) openNode(id); });
+
+async function openNode(id){
+  controls.autoRotate=false;
+  const p=POS.get(id); if(p){ flyTo(p); }
+  const panel=document.getElementById('panel'), body=document.getElementById('panelBody');
+  panel.classList.add('open'); body.textContent='loading…';
+  let d; try{ const r=await fetch('/api/mind-map/node/'+encodeURIComponent(id)); d=await r.json(); }catch(e){ body.textContent='could not load node.'; return; }
+  body.textContent='';
+  const h=document.createElement('h2'); h.textContent=d.label||d.id; body.appendChild(h);
+  if(d.mtype||d.type){ const b=document.createElement('span'); b.className='badge'; b.textContent=d.mtype||d.type; body.appendChild(b); }
+  if(d.body){ const bd=document.createElement('div'); bd.className='body'; bd.textContent=d.body; body.appendChild(bd); }     // textContent: XSS-safe
+  if(d.preview){ const bd=document.createElement('div'); bd.className='body'; bd.textContent=d.preview; body.appendChild(bd); }
+  if(d.specialty){ const m=document.createElement('div'); m.className='meta'; m.textContent='Specialty: '+d.specialty; body.appendChild(m); }
+  if(d.tools&&d.tools.length){ const m=document.createElement('div'); m.className='meta'; m.textContent='Tools: '+d.tools.join(', '); body.appendChild(m); }
+  const meta=[]; if(d.source) meta.push('source: '+d.source); if(d.created) meta.push('created: '+d.created.slice(0,10)); if(d.model) meta.push('model: '+d.model);
+  if(meta.length){ const m=document.createElement('div'); m.className='meta'; m.textContent=meta.join(' · '); body.appendChild(m); }
+}
+document.getElementById('panelX').onclick=()=>{ document.getElementById('panel').classList.remove('open'); controls.autoRotate=true; };
+
+let glide=null; function flyTo(p){ const dir=camera.position.clone().sub(controls.target).normalize();
+  glide={target:p.clone(),camTo:p.clone().add(dir.multiplyScalar(10))}; }
+controls.addEventListener('start',()=>glide=null);
+(function glideLoop(){ if(glide){ camera.position.lerp(glide.camTo,0.08); controls.target.lerp(glide.target,0.08);
+  if(camera.position.distanceTo(glide.camTo)<0.4) glide=null; } requestAnimationFrame(glideLoop); })();
+
+function makeLegend(regions){ const el=document.getElementById('legend');
+  for(const r of regions){ const c=document.createElement('div'); c.className='chip'; c.dataset.region=r.id;
+    const dot=document.createElement('span'); dot.className='dot'; dot.style.background=r.color; const t=document.createElement('span'); t.textContent=r.id;
+    c.appendChild(dot); c.appendChild(t); c.onclick=()=>{ const g=groups[r.id]; if(!g)return; g.visible=!g.visible; c.classList.toggle('off',!g.visible); };
+    el.appendChild(c); } }
+
+const search=document.getElementById('search');
+search.addEventListener('keydown',ev=>{ ev.stopPropagation(); if(ev.key!=='Enter')return;
+  const q=search.value.trim().toLowerCase(); if(!q)return;
+  const hits=ALL_NODES.filter(n=>n.label.toLowerCase().includes(q)||n.id.toLowerCase().includes(q))
+    .sort((a,b)=>(a.label.toLowerCase().startsWith(q)?-1:0)-(b.label.toLowerCase().startsWith(q)?-1:0)||a.label.length-b.label.length);
+  if(hits.length) openNode(hits[0].id); });
+
+/* ═══ boot ═══ */
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) running=false; else if(!running){ running=true; clock.getDelta(); tick(); } });
+
+(async function(){
+  let data; try{ const r=await fetch('/api/mind-map'); if(!r.ok) fail('failed to load mind — HTTP '+r.status); data=await r.json(); }
+  catch(e){ fail('failed to load mind — is the server up?'); }
+  ALL_NODES=data.nodes; POS=layout(data.nodes,data.edges);
+  buildEdges(data.edges,POS); buildNodes(data.nodes,POS);
+  makeRegionLabels(); makeLegend(data.regions);
+  const s=data.stats;
+  document.getElementById('stats').textContent=
+    `${s.nodes} nodes · ${s.edges} edges · memories ${s.memory_shown}/${s.memory_total} · web: ${s.memory_edges}`;
+  tick();
+})();
+</script>
+</body>
+</html>

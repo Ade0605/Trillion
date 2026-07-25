@@ -523,7 +523,10 @@ _OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "se
 # by what actually gets blocked, then flip to enforcing.
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+    # jsdelivr serves the three.js r0.174 ESM tree + addons the /mind scene
+    # imports via <script type=importmap>; cdnjs doesn't host those reliably.
+    # Reputable CDN, deliberate + reversible tradeoff for a local single-user app.
+    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; "
     "media-src 'self' blob: data:; "
