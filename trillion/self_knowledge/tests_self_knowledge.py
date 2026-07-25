@@ -411,10 +411,13 @@ class RouteEnumerationTests(unittest.TestCase):
         self.assertIsNone(_page_routes(Path("no_such_web_server.py")))
 
     def test_live_server_front_doors_match_the_doc(self):
+        # The real set of HTML front doors (fixture _FIVE_DOORS above is a
+        # controlled sample for the count-logic tests, not the live truth).
+        live_doors = ("/", "/cosmos", "/face", "/factory", "/memory", "/phone")
         routes = _page_routes()
         if routes is None:
             self.skipTest("web_server.py not readable from here")
-        self.assertEqual(routes, _FIVE_DOORS)
+        self.assertEqual(routes, live_doors)
 
 
 class RecentGeneratorTests(unittest.TestCase):

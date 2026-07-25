@@ -147,3 +147,22 @@ def send_turn(
         yield {"error": f"API error: {e}"}
     except Exception as e:
         yield {"error": f"Unexpected error: {e}"}
+
+
+def complete(prompt: str, system: str = "",
+             model: str = "claude-haiku-4-5-20251001", max_tokens: int = 1024) -> str:
+    """One-shot, non-streaming completion for cheap background tasks (memory
+    extraction, etc.). Uses a small fast model by default. Returns the text, or
+    "" on any failure — never raises, so a background job can't crash a caller.
+    """
+    try:
+        client = _get_client()
+        kwargs = {"model": model, "max_tokens": max_tokens,
+                  "messages": [{"role": "user", "content": prompt}]}
+        if system:
+            kwargs["system"] = system
+        resp = client.messages.create(**kwargs)
+        return "".join(getattr(b, "text", "") for b in resp.content
+                       if getattr(b, "type", None) == "text").strip()
+    except Exception:
+        return ""

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trillion — Memory</title>
+<style>
+  :root{ --accent:#2af5ff; --violet:#a78bfa; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#06060a; color:#dfefff; font-family:'Segoe UI',system-ui,sans-serif;
+    line-height:1.5; }
+  header{ padding:20px 24px; border-bottom:1px solid #16202c; display:flex; align-items:baseline; gap:14px; }
+  h1{ font-size:19px; margin:0; letter-spacing:.04em; }
+  header .sub{ font-size:12px; color:#6f8a9c; }
+  main{ max-width:760px; margin:0 auto; padding:24px; }
+  h2{ font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:#8fb6c9; margin:28px 0 12px; }
+  .card{ background:#0b131d; border:1px solid #1b2a38; border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+  .card.pending{ border-color:#3a2f5e; }
+  .hook{ font-weight:600; font-size:15px; }
+  .body{ font-size:13px; color:#b8cdd9; margin-top:6px; white-space:pre-wrap; }
+  .badge{ display:inline-block; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+    padding:2px 8px; border-radius:20px; background:#12202c; color:#7fb0c4; margin-right:8px; }
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .btns{ display:flex; gap:8px; flex-shrink:0; }
+  button{ border:1px solid #24384a; background:transparent; color:#cfe6f2; font-size:12px;
+    padding:6px 12px; border-radius:8px; cursor:pointer; }
+  button:hover{ border-color:var(--accent); }
+  button.approve{ border-color:#2f6f4f; color:#7fe0a8; }
+  button.reject,button.forget{ border-color:#6f2f36; color:#e88f98; }
+  .muted{ color:#5b7688; font-size:13px; }
+  .err{ color:#e88f98; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trillion · Memory</h1>
+  <span class="sub">proposals await your approval — nothing is remembered without it</span>
+</header>
+<main>
+  <div id="err" class="err"></div>
+  <h2>Awaiting approval <span id="pcount" class="muted"></span></h2>
+  <div id="pending"></div>
+  <h2>Stored memories <span id="scount" class="muted"></span></h2>
+  <div id="stored"></div>
+</main>
+<script>
+/* token bootstrap — same pattern as the other surfaces */
+let TOKEN = '';
+(function(){ try{
+  const u=new URL(location.href), q=u.searchParams.get('token');
+  if(q){ localStorage.setItem('trillion_token',q); u.searchParams.delete('token'); history.replaceState({},'',u.toString()); }
+  TOKEN=localStorage.getItem('trillion_token')||'';
+  const _f=window.fetch; window.fetch=(url,opt)=>{ opt=opt||{}; const h={}; if(TOKEN) h.Authorization='Bearer '+TOKEN;
+    opt.headers=Object.assign({},opt.headers,h); return _f(url,opt); };
+}catch(e){} })();
+
+const el=(tag,cls)=>{ const e=document.createElement(tag); if(cls) e.className=cls; return e; };
+
+async function post(path, id_or_slug, key){
+  const body={}; body[key]=id_or_slug;
+  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return r.ok ? (await r.json()).ok : false;
+}
+
+function card(pending, item){
+  const c=el('div', pending?'card pending':'card');
+  const row=el('div','row');
+  const left=el('div');
+  const hook=el('div','hook'); hook.textContent=item.hook;          // textContent: raw user text
+  const meta=el('div'); const badge=el('span','badge'); badge.textContent=item.type||'user';
+  meta.appendChild(badge);
+  left.appendChild(hook); left.appendChild(meta);
+  if(item.body && item.body!==item.hook){ const b=el('div','body'); b.textContent=item.body; left.appendChild(b); }
+  row.appendChild(left);
+  const btns=el('div','btns');
+  if(pending){
+    const a=el('button','approve'); a.textContent='Approve';
+    a.onclick=async()=>{ if(await post('/memory/approve',item.id,'id')) load(); };
+    const r=el('button','reject'); r.textContent='Reject';
+    r.onclick=async()=>{ if(await post('/memory/reject',item.id,'id')) load(); };
+    btns.appendChild(a); btns.appendChild(r);
+  } else {
+    const f=el('button','forget'); f.textContent='Forget';
+    f.onclick=async()=>{ if(confirm('Delete this memory?') && await post('/memory/forget',item.slug,'slug')) load(); };
+    btns.appendChild(f);
+  }
+  row.appendChild(btns); c.appendChild(row);
+  return c;
+}
+
+async function load(){
+  document.getElementById('err').textContent='';
+  let d;
+  try{ d=await (await fetch('/memory/data')).json(); }
+  catch(e){ document.getElementById('err').textContent='Could not load memory.'; return; }
+  if(d.error) document.getElementById('err').textContent=d.error;
+  const p=document.getElementById('pending'); p.textContent='';
+  document.getElementById('pcount').textContent=`(${(d.pending||[]).length})`;
+  if(!(d.pending||[]).length){ const m=el('div','muted'); m.textContent='Nothing waiting.'; p.appendChild(m); }
+  (d.pending||[]).forEach(i=>p.appendChild(card(true,i)));
+  const s=document.getElementById('stored'); s.textContent='';
+  document.getElementById('scount').textContent=`(${(d.stored||[]).length})`;
+  if(!(d.stored||[]).length){ const m=el('div','muted'); m.textContent='No memories yet.'; s.appendChild(m); }
+  (d.stored||[]).forEach(i=>s.appendChild(card(false,i)));
+}
+load();
+</script>
+</body>
+</html>

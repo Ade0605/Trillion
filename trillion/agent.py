@@ -5,6 +5,7 @@ and drives the provider. Tool execution is wired in by Tier 2.
 from __future__ import annotations
 
 import os
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Generator
@@ -434,7 +435,28 @@ class Agent:
                 )
         return tool_result
 
+    def _maybe_extract_ended(self) -> None:
+        """On session end, propose durable memories from the ending thread —
+        into the /memory approval queue, never written silently. Runs in a
+        daemon thread (a model call) so reset returns immediately."""
+        if getattr(self, "_fmem", None) is None:
+            return
+        msgs = list(self.conversation)
+        if len(msgs) < 4:
+            return
+        store = self._fmem
+
+        def _run():
+            try:
+                from .memory_extractor import extract_and_enqueue
+                extract_and_enqueue(msgs, source="session end")
+            except Exception:
+                pass
+
+        threading.Thread(target=_run, name="memory-extract", daemon=True).start()
+
     def reset(self) -> None:
+        self._maybe_extract_ended()
         self.conversation = []
         if self._sessions:
             try:

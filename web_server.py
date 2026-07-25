@@ -517,7 +517,7 @@ from trillion.security import http_guard
 # Page shells are served without a token so the browser can bootstrap; the JS
 # then attaches the token to every API call. CSP reports are unauthenticated by
 # nature. Everything else is guarded.
-_OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "service_worker", "phone_icon", "design_preview", "factory_page", "cosmos", "cosmos_agents"}
+_OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "service_worker", "phone_icon", "design_preview", "factory_page", "cosmos", "cosmos_agents", "memory_page"}
 
 # CSP shipped report-only first (see security/audit_shield.CSP_MODE). Widen only
 # by what actually gets blocked, then flip to enforcing.
@@ -734,6 +734,49 @@ def factory_reject():
 def factory_page():
     path = Path(__file__).parent / "static" / "factory.html"
     return path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@app.get("/memory")
+def memory_page():
+    path = Path(__file__).parent / "static" / "memory.html"
+    return path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@app.get("/memory/data")
+def memory_data():
+    """Pending proposals (awaiting approval) + the current stored memories."""
+    try:
+        from trillion.memory_extractor import list_pending
+        from trillion.memory_store import FileMemoryStore
+        pending = list_pending()
+        stored = [{"slug": m.slug, "type": m.type, "hook": m.hook}
+                  for m in FileMemoryStore().all()]
+        return {"pending": pending, "stored": stored}
+    except Exception as e:
+        return {"pending": [], "stored": [], "error": str(e)}
+
+
+@app.post("/memory/approve")
+def memory_approve():
+    from trillion.memory_extractor import approve
+    from trillion.memory_store import FileMemoryStore
+    item_id = (request.get_json(force=True) or {}).get("id", "")
+    return {"ok": approve(item_id, FileMemoryStore())}
+
+
+@app.post("/memory/reject")
+def memory_reject():
+    from trillion.memory_extractor import reject
+    item_id = (request.get_json(force=True) or {}).get("id", "")
+    return {"ok": reject(item_id)}
+
+
+@app.post("/memory/forget")
+def memory_forget():
+    """Delete a stored memory by slug (hand deletion is always allowed)."""
+    from trillion.memory_store import FileMemoryStore
+    slug = (request.get_json(force=True) or {}).get("slug", "")
+    return {"ok": FileMemoryStore().delete(slug)}
 
 
 @app.post("/api/security/csp-report")

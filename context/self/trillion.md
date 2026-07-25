@@ -17,7 +17,8 @@ It runs locally. Several front doors share a single brain (Claude) — a Flask a
 on `localhost:7777` serving the chat interface with an animated orb (`/`), a
 full-screen cosmic interface (`/face`), the living cosmic orb with its
 sub-agent constellation (`/cosmos`), an installable voice-first phone PWA
-(`/phone`), and the sub-agent approval console (`/factory`) — plus a text REPL
+(`/phone`), the sub-agent approval console (`/factory`), and the memory-review
+console (`/memory`) — plus a text REPL
 (`main.py`) and a native push-to-talk voice REPL (`main_voice.py`). Whatever the
 surface, the same `Agent` class in `trillion/agent.py` does the thinking.
 
@@ -95,6 +96,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-25 | `4218453` | feat: wire file memory into the agent â€” tools + per-turn recall |
 | 2026-07-25 | `893c2ff` | feat: semantic memory recall with a keyword safety net |
 | 2026-07-24 | `4c84cbe` | feat: file-backed typed long-term memory + migration |
 | 2026-07-24 | `460466f` | feat: persist working memory so the conversation survives a restart |
@@ -109,7 +111,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-20 | `74ce9ee` | feat: run the web server as a Windows service |
 | 2026-07-20 | `0ef4d8c` | feat: supervise the web server so it restarts in seconds |
 | 2026-07-19 | `3841f28` | chore: teach self-knowledge about the calendar and morning brief |
-| 2026-07-19 | `d2c7c47` | fix: send Basic auth preemptively to Yahoo CalDAV |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
