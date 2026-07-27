@@ -925,19 +925,74 @@ msgEl.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefaul
 
 // voice input
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+// Mic APIs are blocked on a non-secure origin — opening via the LAN IP
+// (http://192.168.x.x) instead of localhost silently kills voice.
+const MIC_OK = window.isSecureContext || ['localhost','127.0.0.1'].includes(location.hostname);
+const MIC_INSECURE_MSG = 'Microphone needs localhost or HTTPS — open Trillion at http://localhost:7777.';
+function micFail(msg){ micBtn.classList.remove('on'); setState('idle'); showCaption(msg); }
+
 if (SR){
   const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
   let finalT = '';
   rec.onstart = () => { micBtn.classList.add('on'); demo(false); setState('listening'); finalT = ''; };
   rec.onresult = e => { let it = ''; finalT = ''; for (const r of e.results){ if (r.isFinal) finalT += r[0].transcript; else it += r[0].transcript; } msgEl.value = finalT || it; };
   rec.onend = () => { micBtn.classList.remove('on'); if (finalT.trim()){ const v = msgEl.value; msgEl.value = ''; ask(v); } else setState('idle'); };
-  rec.onerror = () => { micBtn.classList.remove('on'); setState('idle'); };
+  rec.onerror = e => { const m = {'not-allowed':'Mic blocked — allow microphone access in the browser.',
+    'service-not-allowed':'Mic blocked by the browser.','no-speech':'Didn’t catch that — try again.',
+    'network':'Speech service unreachable — check your connection.','audio-capture':'No microphone found.'
+    }[e.error] || ('Mic error: ' + e.error); micFail(m); };
   micBtn.addEventListener('click', () => {
     resumeAudioCtx();
+    if (!MIC_OK){ micFail(MIC_INSECURE_MSG); return; }
     if (micBtn.classList.contains('on')) rec.stop();
-    else { if (ttsAudio){ try { ttsAudio.pause(); } catch(e){} } msgEl.value = ''; rec.start(); }
+    else { if (ttsAudio){ try { ttsAudio.pause(); } catch(e){} } msgEl.value = ''; try { rec.start(); } catch(e){} }
   });
-} else { micBtn.style.opacity = '.4'; micBtn.title = 'Voice not supported here'; }
+} else {
+  // No Web Speech API (Firefox/Safari) → record a clip, transcribe via Deepgram.
+  let mediaRecorder = null, micStream = null, recChunks = [], recMime = 'audio/webm', recording = false;
+  const pickMime = () => { for (const m of ['audio/mp4','audio/webm;codecs=opus','audio/webm']){ if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } return ''; };
+  async function startRec(){
+    try { micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true } }); }
+    catch(e){ micFail('Mic blocked — allow microphone access in the browser.'); return; }
+    demo(false); setState('listening'); micBtn.classList.add('on'); recording = true;
+    recMime = pickMime(); recChunks = [];
+    mediaRecorder = recMime ? new MediaRecorder(micStream, { mimeType: recMime }) : new MediaRecorder(micStream);
+    mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    mediaRecorder.onstop = onStopRec; mediaRecorder.start();
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const an = ctx.createAnalyser(); an.fftSize = 512; ctx.createMediaStreamSource(micStream).connect(an);
+    const data = new Uint8Array(an.frequencyBinCount); let spoke=false, silent=0, t0=performance.now(), last=t0;
+    (function loop(){
+      if (!recording || !mediaRecorder || mediaRecorder.state !== 'recording'){ try{ctx.close();}catch(e){} return; }
+      an.getByteFrequencyData(data); let sum=0; for (let i=0;i<data.length;i++) sum+=data[i]; const lvl=sum/data.length;
+      const now=performance.now(), dt=now-last; last=now;
+      if (lvl>16){ spoke=true; silent=0; } else if (spoke){ silent+=dt; }
+      if ((spoke && silent>800) || (now-t0>15000)){ stopRec(); return; }
+      requestAnimationFrame(loop);
+    })();
+  }
+  function stopRec(){ recording=false; micBtn.classList.remove('on');
+    if (mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.stop();
+    if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; } }
+  async function onStopRec(){
+    setState('processing');
+    const blob = new Blob(recChunks, { type: recMime || 'audio/webm' });
+    if (blob.size < 800){ setState('idle'); return; }   // too short — probably no speech
+    let text = '';
+    try {
+      const r = await fetch('/transcribe', { method:'POST', headers:{ 'Content-Type': recMime || 'audio/webm' }, body: blob });
+      if (r.status === 401){ micFail('Not signed in — open with your ?token= link.'); return; }
+      const j = await r.json(); text = (j.text || '').trim();
+      if (!text){ micFail(j.error ? 'Transcription failed.' : 'Didn’t catch that — try again.'); return; }
+    } catch(e){ micFail('Transcription failed — is Trillion running?'); return; }
+    msgEl.value = ''; ask(text);
+  }
+  micBtn.addEventListener('click', () => {
+    resumeAudioCtx();
+    if (!MIC_OK){ micFail(MIC_INSECURE_MSG); return; }
+    if (recording) stopRec(); else { if (ttsAudio){ try { ttsAudio.pause(); } catch(e){} } startRec(); }
+  });
+}
 
 // performance mode: half-res background, drawn every other frame
 const perfBtn = document.getElementById('perf');

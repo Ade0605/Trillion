@@ -96,6 +96,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-27 | `513a2d8` | perf: cap the OmniRoute embed timeout so a slow router can't stall a reply |
 | 2026-07-25 | `7fa2b01` | test(mind): account for /mind as the 7th front door |
 | 2026-07-25 | `bd0079a` | feat(mind): the 3D scene â€” void, glowing nodes, regions, edges, navigation |
 | 2026-07-25 | `f9d6722` | feat(mind): the data contract for the mind map (Tier 1) |
@@ -110,7 +111,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-20 | `98922ed` | perf: cut response latency and stop the scene stuttering |
 | 2026-07-20 | `461b63c` | feat(cosmos): speech surfaces from the orb instead of a floating box |
 | 2026-07-20 | `0211fab` | feat: report OmniRoute status, token usage and last model |
-| 2026-07-20 | `9543e30` | feat: spoken end-of-day Claude Code report |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents

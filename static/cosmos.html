@@ -73,7 +73,8 @@
     text-shadow:0 0 calc(10px + var(--say,0) * 26px) var(--accent),
                 0 0 34px rgba(0,0,0,.95); }
   @keyframes surface{ to{ opacity:1; filter:blur(0); transform:translateY(0); } }
-  #subtitle.you{ font-size:15px; color:#8fb6c9; font-weight:400; letter-spacing:.05em; }
+  #subtitle.you{ font-size:13px; color:#7fa0b0; opacity:.7; font-weight:400; letter-spacing:.04em;
+    max-height:2.6em; overflow:hidden; }   /* your own words stay a subtle echo, never fill the screen */
   #subtitle.you .w{ text-shadow:0 0 18px rgba(0,0,0,.9); }
   @media (prefers-reduced-motion: reduce){
     #subtitle .w{ animation:none; opacity:1; filter:none; transform:none; }
@@ -578,12 +579,20 @@ inputEl.addEventListener('input',()=>{ inputEl.style.height='auto'; inputEl.styl
 inputEl.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); }});
 document.getElementById('send-btn').onclick=sendChat;
 
+/* How your OWN spoken/typed words echo on screen while Trillion thinks.
+   Change this one word to pick the behaviour:
+     'subtle' — small, dim, clamped, auto-fades (default)
+     'hide'   — never show your transcript; only Trillion's reply appears
+     'after'  — same as 'hide' here (Cosmos has no scrollback to reveal it in) */
+const YOU_ECHO = 'hide';
 async function sendChat(){
   const text=inputEl.value.trim(); if(!text) return;
   inputEl.value=''; inputEl.style.height='auto';
   realEvents=true; setState('processing');
-  showSub(text, 'you');            // your words surface first, then dissolve
-  setTimeout(()=>{ if(stateName==='processing') showSub(''); }, 1600);
+  if(YOU_ECHO==='subtle'){
+    showSub(text, 'you');          // your words surface briefly, then dissolve
+    setTimeout(()=>{ if(stateName==='processing') showSub(''); }, 1200);
+  }
   stopSpeech();                    // barge-in: a new turn cancels the old voice
   let reply='', lastTurn=null, spoke=false;
   try{
@@ -695,19 +704,80 @@ function playTTS(turnId){
   ttsEl.play().catch(()=>{ setState('idle'); });   // if blocked, the reply text still shows
 }
 
-/* microphone (Web Speech for transcript + analyser for reactivity) */
+/* microphone — Web Speech for a live transcript when the browser has it, else
+   record a clip and transcribe server-side via Deepgram /transcribe (Firefox
+   and Safari have no SpeechRecognition). Every failure now surfaces in the
+   subtitle instead of dying silently — a dead mic used to look like Trillion
+   simply not answering. */
 const micBtn=document.getElementById('mic-btn');
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let rec=null, micStream=null;
-if(!SR){ micBtn.style.opacity=.4; }
-else{
+let rec=null, micStream=null, micRecording=false;
+
+function micFail(msg){ micRecording=false; micBtn.classList.remove('listening'); setState('idle'); showSub(msg,'trillion'); }
+
+// Mic APIs are blocked on a non-secure origin — opening Trillion via the LAN IP
+// (http://192.168.x.x) instead of localhost is a common silent killer.
+const MIC_OK = window.isSecureContext || ['localhost','127.0.0.1'].includes(location.hostname);
+const MIC_INSECURE_MSG = 'Microphone needs localhost or HTTPS. Open Trillion at http://localhost:7777.';
+
+if(SR){
   rec=new SR(); rec.interimResults=true; rec.lang='en-US';
   rec.onstart=async()=>{ realEvents=true; setState('listening'); micBtn.classList.add('listening');
     try{ micStream=await navigator.mediaDevices.getUserMedia({audio:true}); audio.attachStream(micStream);}catch(e){} };
   rec.onresult=e=>{ let s=''; for(const r of e.results) s+=r[0].transcript; inputEl.value=s; };
+  rec.onerror=e=>{ const m={'not-allowed':'Mic blocked — allow microphone access in the browser.',
+    'service-not-allowed':'Mic blocked by the browser.','no-speech':'Didn’t catch that — try again.',
+    'network':'Speech service unreachable — check your connection.','audio-capture':'No microphone found.'
+    }[e.error] || ('Mic error: '+e.error); micFail(m); };
   rec.onend=()=>{ micBtn.classList.remove('listening'); if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
-    if(inputEl.value.trim()) sendChat(); else setState('idle'); };
-  micBtn.onclick=()=>{ try{ rec.start(); }catch(e){} };
+    if(inputEl.value.trim()) sendChat(); else if(stateName==='listening') setState('idle'); };
+  micBtn.onclick=()=>{ if(!MIC_OK){ micFail(MIC_INSECURE_MSG); return; } try{ rec.start(); }catch(e){} };
+}else{
+  // No Web Speech API in this browser → record + Deepgram fallback (toggle).
+  micBtn.onclick=()=>{ if(!MIC_OK){ micFail(MIC_INSECURE_MSG); return; }
+    if(micRecording) stopRecFallback(); else startRecFallback(); };
+}
+
+let mediaRecorder=null, recChunks=[], recMime='audio/webm';
+function pickMime(){ for(const m of ['audio/mp4','audio/webm;codecs=opus','audio/webm']){
+  if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } return ''; }
+async function startRecFallback(){
+  try{ micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
+  catch(e){ micFail('Mic blocked — allow microphone access in the browser.'); return; }
+  realEvents=true; setState('listening'); micBtn.classList.add('listening'); micRecording=true;
+  try{ audio.attachStream(micStream); }catch(e){}
+  recMime=pickMime(); recChunks=[];
+  mediaRecorder = recMime ? new MediaRecorder(micStream,{mimeType:recMime}) : new MediaRecorder(micStream);
+  mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) recChunks.push(e.data); };
+  mediaRecorder.onstop=onRecFallbackStop; mediaRecorder.start();
+  // trailing-silence auto-stop, mirroring the phone client
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const an=ctx.createAnalyser(); an.fftSize=512; ctx.createMediaStreamSource(micStream).connect(an);
+  const data=new Uint8Array(an.frequencyBinCount); let spoke=false, silent=0, t0=performance.now(), last=t0;
+  (function loop(){
+    if(!micRecording||!mediaRecorder||mediaRecorder.state!=='recording'){ try{ctx.close();}catch(e){} return; }
+    an.getByteFrequencyData(data); let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]; const lvl=sum/data.length;
+    const now=performance.now(), dt=now-last; last=now;
+    if(lvl>16){ spoke=true; silent=0; } else if(spoke){ silent+=dt; }
+    if((spoke&&silent>800)||(now-t0>15000)){ stopRecFallback(); return; }
+    requestAnimationFrame(loop);
+  })();
+}
+function stopRecFallback(){ micRecording=false; micBtn.classList.remove('listening');
+  if(mediaRecorder&&mediaRecorder.state==='recording') mediaRecorder.stop();
+  if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; } }
+async function onRecFallbackStop(){
+  setState('processing');
+  const blob=new Blob(recChunks,{type:recMime||'audio/webm'});
+  if(blob.size<800){ setState('idle'); return; }   // too short — probably no speech
+  let text='';
+  try{
+    const r=await fetch('/transcribe',{method:'POST',headers:{'Content-Type':recMime||'audio/webm'},body:blob});
+    if(r.status===401){ micFail('Not signed in — open with your ?token= link.'); return; }
+    const j=await r.json(); text=(j.text||'').trim();
+    if(!text){ micFail(j.error ? 'Transcription failed.' : 'Didn’t catch that — try again.'); return; }
+  }catch(e){ micFail('Transcription failed — is Trillion running?'); return; }
+  inputEl.value=text; sendChat();
 }
 
 /* ═══════════════════════ THE ONE ANIMATION LOOP ═══════════════════════════ */
