@@ -55,9 +55,14 @@ def _fingerprint(m: Memory) -> str:
     return hashlib.sha1((m.hook + "\n" + m.body).encode("utf-8")).hexdigest()[:16]
 
 
-def embed_texts(texts: list[str], timeout: float = 6.0) -> list[list[float]] | None:
+def embed_texts(texts: list[str], timeout: float = 2.5) -> list[list[float]] | None:
     """Batch-embed via OmniRoute. Returns None on any failure (down, error,
-    shape mismatch) so the caller can fall back to keyword."""
+    slow, shape mismatch) so the caller can fall back to keyword.
+
+    Timeout is deliberately short: OmniRoute is a flaky logon task and can be
+    up-but-slow, and this runs on the interactive path (the recall tool during a
+    voice turn). A slow embed must degrade to keyword fast rather than stall the
+    reply — better a keyword hit now than a semantic one in six seconds."""
     if not texts:
         return []
     try:
