@@ -97,6 +97,9 @@ class Agent:
     def __init__(self) -> None:
         self.config = _load_config()
         self.model: str = self.config.get("model", "claude-sonnet-4-6")
+        # Fast model for short, simple turns (halves TTFB in the voice loop).
+        # Set fast_model to the same value as model to disable routing.
+        self.fast_model: str = self.config.get("fast_model", "claude-haiku-4-5-20251001")
         self.max_tool_calls: int = self.config.get("max_tool_calls_per_turn", 10)
         self.conversation: list[dict] = []
         self._tool_registry = None  # injected by Tier 2
@@ -293,6 +296,17 @@ class Agent:
         self._recall_for_turn(user_input)   # inject only the memories relevant to this turn
         tool_calls_this_turn = 0
 
+        # Pick the model ONCE for the whole turn (including its tool rounds), so
+        # a turn never switches models mid tool-loop — that would desync the
+        # per-model prompt cache and can confuse tool-use continuation.
+        from .model_router import pick_model
+        # getattr fallback: a few tests build Agent via __new__ without __init__,
+        # so fast_model may be absent — degrade to no routing rather than crash.
+        turn_model = pick_model(
+            user_input, strong_model=self.model,
+            fast_model=getattr(self, "fast_model", self.model),
+        )
+
         while True:
             chunks: list[str] = []
             tool_requests: list[dict] = []
@@ -308,7 +322,7 @@ class Agent:
             for event in send_turn(
                 messages=api_messages,
                 system=self._system_blocks(),
-                model=self.model,
+                model=turn_model,
                 tools=self._anthropic_tools(),
             ):
                 if isinstance(event, str):

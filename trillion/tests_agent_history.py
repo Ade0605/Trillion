@@ -106,6 +106,7 @@ class InterruptedTurnLeavesNoOrphan(unittest.TestCase):
         agent = Agent.__new__(Agent)
         agent.conversation = []
         agent.model = "test-model"
+        agent.fast_model = "test-model"
         agent.max_tool_calls = 5
         agent._tool_registry = None
         agent._confirm_waiter = lambda n, i: True

@@ -96,6 +96,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-07-27 | `4cadbe3` | fix: stop silent voice-mic failures + hide user transcript echo |
 | 2026-07-27 | `513a2d8` | perf: cap the OmniRoute embed timeout so a slow router can't stall a reply |
 | 2026-07-25 | `7fa2b01` | test(mind): account for /mind as the 7th front door |
 | 2026-07-25 | `bd0079a` | feat(mind): the 3D scene â€” void, glowing nodes, regions, edges, navigation |
@@ -106,11 +107,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-24 | `4c84cbe` | feat: file-backed typed long-term memory + migration |
 | 2026-07-24 | `460466f` | feat: persist working memory so the conversation survives a restart |
 | 2026-07-22 | `f178b19` | feat(self-knowledge): generate the sub-agent roster instead of writing it |
-| 2026-07-21 | `2d37ac1` | feat: open cosmic /face UI when EOD report runs |
-| 2026-07-21 | `159d177` | perf: pipeline LLM streaming into TTS with per-sentence segments |
-| 2026-07-20 | `98922ed` | perf: cut response latency and stop the scene stuttering |
-| 2026-07-20 | `461b63c` | feat(cosmos): speech surfaces from the orb instead of a floating box |
-| 2026-07-20 | `0211fab` | feat: report OmniRoute status, token usage and last model |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents

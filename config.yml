@@ -2,6 +2,11 @@
 
 model: claude-sonnet-4-6
 
+# Fast model for short, simple turns — halves time-to-first-token in the voice
+# loop. Complex/long turns still use `model` above. Set equal to `model` to
+# disable per-turn routing.
+fast_model: claude-haiku-4-5-20251001
+
 # Maximum tool calls the agent may chain in a single turn before forcing a reply
 max_tool_calls_per_turn: 10
 
