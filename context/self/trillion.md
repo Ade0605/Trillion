@@ -96,6 +96,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-08-04 | `618f29a` | feat: route short simple turns to a fast model to cut voice TTFB |
 | 2026-07-27 | `4cadbe3` | fix: stop silent voice-mic failures + hide user transcript echo |
 | 2026-07-27 | `513a2d8` | perf: cap the OmniRoute embed timeout so a slow router can't stall a reply |
 | 2026-07-25 | `7fa2b01` | test(mind): account for /mind as the 7th front door |
@@ -106,7 +107,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-07-25 | `893c2ff` | feat: semantic memory recall with a keyword safety net |
 | 2026-07-24 | `4c84cbe` | feat: file-backed typed long-term memory + migration |
 | 2026-07-24 | `460466f` | feat: persist working memory so the conversation survives a restart |
-| 2026-07-22 | `f178b19` | feat(self-knowledge): generate the sub-agent roster instead of writing it |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents

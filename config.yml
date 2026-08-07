@@ -33,6 +33,11 @@ heartbeat:
       enabled: true
       priority: low
       trigger_hour: 8           # 8 AM
+    competitive_intel:
+      interval_seconds: 86400  # once a day — daily Starrdam competitive brief
+      enabled: true
+      priority: low
+      trigger_hour: 9           # 9 AM (after the morning brief)
 
 # Quiet hours: non-urgent notices are held, not surfaced
 quiet_hours:
