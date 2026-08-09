@@ -6,8 +6,8 @@ inherits the full environment by default — including every API key. These
 presets hand a subprocess only the OS baseline (or an explicit allowlist) so a
 compromised or misbehaving child can't read ANTHROPIC_API_KEY et al.
 
-Trillion has no spawn sites in its core loop; the only subprocess is the CVE
-scanner (security/cve_scan), which uses shell_minimal().
+Core-loop spawn sites: the CVE scanner (security/cve_scan) and
+close_application (tools/system_control, taskkill) — both use shell_minimal().
 """
 from __future__ import annotations
 

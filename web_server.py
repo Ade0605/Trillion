@@ -108,6 +108,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 #voice-banner.warn{color:#ffb84d;background:#ffb84d12;border-color:#ffb84d33}
 #voice-banner.checking{color:#ffffff44}
 #chat{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+body.voice-mode #chat{display:none}
+body.voice-mode #orb-section{flex:1;justify-content:center;padding:0}
+#history-panel{position:fixed;top:0;right:-340px;width:320px;height:100vh;background:#0a0a14;border-left:1px solid #1e1e38;padding:16px;overflow-y:auto;transition:right .2s ease;z-index:10}
+#history-panel.open{right:0}
+#history-panel h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#2af5ff;margin-bottom:12px}
+.hist-entry{font-size:12px;color:#c9c9d9;border-bottom:1px solid #1e1e38;padding:8px 0}
+.hist-entry .hist-tool{color:#2af5ff;font-weight:600;margin-bottom:2px}
+.hist-entry .hist-ts{color:#555577;font-size:10px;margin-top:2px}
 #chat::-webkit-scrollbar{width:4px}
 #chat::-webkit-scrollbar-track{background:transparent}
 #chat::-webkit-scrollbar-thumb{background:#2a2a3a;border-radius:2px}
@@ -149,9 +157,15 @@ footer{padding:12px 20px;border-top:1px solid #111128;display:flex;gap:8px;flex-
   <div id="voice-banner" title="Live ElevenLabs voice status">checking voice…</div>
 </div>
 <div id="chat"></div>
+<div id="history-panel">
+  <h3>Command History</h3>
+  <div id="history-list"></div>
+</div>
 <footer>
   <textarea id="input" placeholder="Ask Trillion anything…" rows="1"></textarea>
   <button id="mic-btn" class="btn" title="Click to speak">🎤</button>
+  <button id="voice-mode-btn" class="btn" title="Toggle transcript / voice-only view">👁</button>
+  <button id="history-btn" class="btn" title="Command history">📜</button>
   <button id="tts-btn" class="btn active" title="Toggle voice">🔊</button>
   <button id="reset-btn" class="btn" title="Clear">↺</button>
   <button id="send" class="btn">Send</button>
@@ -260,6 +274,7 @@ const sendBtn = document.getElementById('send');
 const resetBtn = document.getElementById('reset-btn');
 const ttsBtn = document.getElementById('tts-btn');
 const micBtn = document.getElementById('mic-btn');
+const voiceModeBtn = document.getElementById('voice-mode-btn');
 let ttsEnabled = true, currentAudio = null;
 let audioQueue = [], isPlayingQueue = false;
 let turnCount = 0;
@@ -269,6 +284,63 @@ ttsBtn.addEventListener('click', () => {
   ttsBtn.classList.toggle('active', ttsEnabled);
   ttsBtn.textContent = ttsEnabled ? '🔊' : '🔇';
   if (!ttsEnabled) { stopAudio(); window.speechSynthesis && window.speechSynthesis.cancel(); }
+});
+
+/* ── Voice-only view: hide the transcript, keep just the orb + wave ── */
+function applyVoiceMode(on) {
+  document.body.classList.toggle('voice-mode', on);
+  voiceModeBtn.classList.toggle('active', on);
+  voiceModeBtn.title = on ? 'Show transcript' : 'Hide transcript (voice-only view)';
+}
+const savedVoiceMode = localStorage.getItem('trillion_voice_mode');
+applyVoiceMode(savedVoiceMode === null ? true : savedVoiceMode === 'true');
+voiceModeBtn.addEventListener('click', () => {
+  const on = !document.body.classList.contains('voice-mode');
+  applyVoiceMode(on);
+  localStorage.setItem('trillion_voice_mode', String(on));
+});
+
+/* ── Command history panel ── */
+const historyBtn = document.getElementById('history-btn');
+const historyPanel = document.getElementById('history-panel');
+const historyList = document.getElementById('history-list');
+
+function renderHistory(entries) {
+  historyList.textContent = '';
+  if (!entries || !entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hist-entry';
+    empty.textContent = 'No tool activity yet.';
+    historyList.appendChild(empty);
+    return;
+  }
+  for (const e of entries) {
+    const row = document.createElement('div');
+    row.className = 'hist-entry';
+    const tool = document.createElement('div');
+    tool.className = 'hist-tool'; tool.textContent = e.tool || 'unknown';
+    const result = document.createElement('div');
+    result.textContent = (e.result || '').slice(0, 140);
+    const ts = document.createElement('div');
+    ts.className = 'hist-ts'; ts.textContent = e.ts || '';
+    row.appendChild(tool); row.appendChild(result); row.appendChild(ts);
+    historyList.appendChild(row);
+  }
+}
+
+historyBtn.addEventListener('click', async () => {
+  const opening = !historyPanel.classList.contains('open');
+  historyPanel.classList.toggle('open', opening);
+  if (!opening) return;
+  historyList.textContent = 'Loading…';
+  try {
+    const r = await fetch('/api/history');
+    if (!r.ok) { historyList.textContent = 'Could not load history (HTTP ' + r.status + ').'; return; }
+    const data = await r.json();
+    renderHistory(data.entries);
+  } catch (e) {
+    historyList.textContent = 'Could not reach server for history.';
+  }
 });
 
 function stopAudio() {
@@ -889,6 +961,13 @@ def confirm():
     if ev is not None:
         ev.set()
     return {"ok": True}
+
+
+@app.get("/api/history")
+def history():
+    """Recent tool-run history for the transcript panel's history view."""
+    from trillion.audit import recent_tool_runs
+    return {"entries": recent_tool_runs(limit=100)}
 
 
 @app.get("/voice-status")

@@ -155,4 +155,19 @@ def build_registry() -> ToolRegistry:
         register_omniroute(r)
     except Exception:
         pass  # omniroute optional; never break core tools
+    try:
+        from .system_control import register_system_control
+        register_system_control(r)
+    except Exception:
+        pass  # system control optional; never break core tools
+    try:
+        from .system_monitor import register_system_monitor
+        register_system_monitor(r)
+    except Exception:
+        pass  # system monitor optional; never break core tools
+    try:
+        from trillion.vision.face_auth import register_face_auth
+        register_face_auth(r)
+    except Exception:
+        pass  # face recognition optional (needs opencv-python + face_recognition); never break core tools
     return r

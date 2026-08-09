@@ -18,3 +18,20 @@ recurring-ical-events>=3.8.0
 # pynput>=1.7.0
 # sounddevice>=0.4.6
 # numpy>=1.24.0
+
+# System monitoring / screenshot tool
+psutil>=5.9.0
+pillow>=10.0.0
+
+# Wake-word voice activation (optional — set voice_activation: wake_word in
+# config.yml to use it; push_to_talk remains the default and needs none of this)
+# openwakeword>=0.6.0
+# onnxruntime>=1.20.0
+# soundcard>=0.4.3
+# numpy>=1.24.0
+
+# Face recognition (optional — trillion/vision/face_auth.py; not wired into
+# the web login, standalone enroll/verify tools only)
+# opencv-python>=4.9.0
+# face_recognition>=1.3.0
+# setuptools<81   # face_recognition_models still imports pkg_resources, removed in newer setuptools

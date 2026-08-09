@@ -69,6 +69,23 @@ def log_error(context: str, error: str) -> None:
     log("error", context=context, error=error)
 
 
+def recent_tool_runs(limit: int = 50) -> list[dict]:
+    """Read the audit log and return the most recent tool_run entries, newest first.
+    Missing/corrupt log lines are skipped rather than raising."""
+    if not _LOG.exists():
+        return []
+    entries: list[dict] = []
+    for line in _LOG.read_text(encoding="utf-8").splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("event") == "tool_run":
+            entries.append(entry)
+    entries.reverse()
+    return entries[:limit]
+
+
 def session_cost_summary() -> str:
     cost = (
         _session_input_tokens * _COST_PER_INPUT_TOKEN

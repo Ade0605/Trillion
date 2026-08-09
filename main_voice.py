@@ -62,8 +62,16 @@ def main() -> None:
         if full_reply.strip():
             tts.speak(full_reply)
 
-    from trillion.voice.push_to_talk import run_push_to_talk
-    run_push_to_talk(on_transcript)
+    import yaml
+    with open(Path(__file__).parent / "config.yml") as f:
+        activation = (yaml.safe_load(f) or {}).get("voice_activation", "push_to_talk")
+
+    if activation == "wake_word":
+        from trillion.voice.wake_word import run_wake_word
+        run_wake_word(on_transcript)
+    else:
+        from trillion.voice.push_to_talk import run_push_to_talk
+        run_push_to_talk(on_transcript)
 
 
 if __name__ == "__main__":

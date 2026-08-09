@@ -54,6 +54,17 @@ elevenlabs_model: eleven_turbo_v2_5
 # Push-to-talk key (Tier 3)
 push_to_talk_key: space
 
+# How main_voice.py starts listening: "push_to_talk" (hold key) or "wake_word"
+# (always-on, say the wake word first). Wake word needs: pip install
+# soundcard numpy openwakeword onnxruntime — model auto-downloads on first run.
+voice_activation: push_to_talk
+wake_word:
+  model: hey_jarvis        # openwakeword pretrained model name
+  threshold: 0.5            # detection confidence 0-1; lower = more sensitive (more false triggers)
+  silence_seconds: 1.0      # pause length that ends an utterance
+  max_utterance_seconds: 15.0
+  cooldown_seconds: 1.5     # minimum gap between triggers (avoids re-triggering on its own reply)
+
 # Self-knowledge: inject an auto-generated, code-grounded self-description into
 # the system prompt so Trillion doesn't invent or deny its own capabilities.
 # Regenerate the doc with: python -m trillion.self_knowledge --refresh
