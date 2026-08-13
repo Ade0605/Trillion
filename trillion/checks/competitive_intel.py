@@ -25,6 +25,9 @@ _ANGLES = [
     "an operational or capability gap to close before a competitor exploits it",
     "a Nigerian regulatory or market shift (CAC/NSCDC/NCAA/NPF) worth acting on",
     "a differentiation play that does not require matching a rival on scale or drones",
+    "a defence-acquisition move: DICON alignment, an OEM to partner (Proforce/Terra/BabaSky), or a sustainment/MRO angle",
+    "a corporate-security growth play: managed monitoring/analytics, a physical+cyber bundle, or an NDPA-compliance wedge",
+    "a LinkedIn or tender-channel move for the defence-acquisition (B2G) line",
 ]
 
 
@@ -50,20 +53,26 @@ def run() -> list[dict] | None:
     angle = _ANGLES[date.today().toordinal() % len(_ANGLES)]
     system = (
         "You are a competitive-strategy advisor for Starrdam Intelligence, a "
-        "Nigeria-based security & defence firm. Ground every claim in the "
-        "business facts provided — never invent competitors, contracts, or "
-        "numbers. Be concrete and blunt. No preamble."
+        "Nigeria-based security & defence firm. Its two priority lines are "
+        "(1) defence acquisition & maintenance (B2G — sell via LinkedIn, DICON, "
+        "and tenders, not Instagram) and (2) corporate security (Instagram works "
+        "for this audience + recruitment). Weight advice toward these two. Ground "
+        "every claim in the business facts provided — never invent competitors, "
+        "contracts, or numbers. Be concrete and blunt. No preamble."
     )
     prompt = (
         f"Business & competitor knowledge:\n{context}\n\n"
         f"Today's focus: {angle}.\n\n"
-        "Give a daily competitive brief in this exact shape, under 90 words total:\n"
+        "Give a daily brief in this exact shape, under 130 words total:\n"
         "INSIGHT: <one sharp, specific observation>\n"
-        "ACTION: <one concrete thing to do today or this week>"
+        "ACTION: <one concrete thing to do today or this week>\n"
+        "OPPORTUNITY: <one opportunity in defence acquisition OR corporate security>\n"
+        "POST: <one OPSEC-safe social/story idea — no client sites, faces, or live ops; "
+        "name the channel (Instagram for corporate/brand, LinkedIn for defence acquisition)>"
     )
     try:
         from trillion.provider import complete
-        text = complete(prompt, system=system, max_tokens=220).strip()
+        text = complete(prompt, system=system, max_tokens=340).strip()
     except Exception:
         return None
     if not text:

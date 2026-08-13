@@ -44,6 +44,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 <!-- AUTO-START: capabilities -->
 | Tool | What it does | Asks first |
 | --- | --- | --- |
+| `abort_shutdown` | Cancel a pending scheduled shutdown or restart. | no |
 | `add_reminder` | Add a reminder or todo item. | no |
 | `close_application` | Force-close a known application by name. | yes |
 | `complete_reminder` | Mark a reminder as done by its id. | no |
@@ -54,6 +55,9 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `enroll_face` | Enroll a person's face via the webcam for later identification. | no |
 | `forget` | Delete a stored memory by its id when it is wrong or no longer true. | yes |
 | `forget_face` | Remove a person's enrolled face data. | yes |
+| `generate_image` | Generate an image from a text prompt (Gemini) and save it locally. | no |
+| `generate_video` | Generate a short video from a text prompt (Gemini Veo) and save it locally. | no |
+| `get_assistant_name` | Report the assistant's current name. | no |
 | `list_calendar_events` | Look at the user's calendar. | no |
 | `list_enrolled_faces` | List everyone currently enrolled for face recognition. | no |
 | `list_memories` | List all stored long-term memories, grouped by type. | no |
@@ -63,17 +67,23 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `lock_screen` | Lock the computer screen immediately. | no |
 | `omniroute_status` | Check OmniRoute (the local LLM router): whether it's running, its version, how many tokens have been used, and which model was routed most recently. | no |
 | `open_application` | Open a known application by name. | no |
+| `open_website` | Open a website in the default browser. | no |
+| `play_music` | Play a song from the user's Music folder. | no |
 | `read_note` | Read the full contents of a specific note file by filename. | no |
 | `recall` | Search your long-term memories for anything relevant to a query. | no |
 | `remember` | Save a durable fact worth keeping across future sessions — something the user taught you, a correction they made, a lasting preference, or a decision on one of their projects. | no |
+| `rename_assistant` | Change the name the assistant refers to itself as. | no |
+| `restart_system` | Schedule a full system restart (default 30s delay, cancellable via abort_shutdown). | yes |
 | `search_notes` | Search your local notes and documents for a keyword or phrase. | no |
+| `send_email` | Send an email via SMTP. | yes |
+| `shutdown_system` | Schedule a full system shutdown (default 30s delay, cancellable via abort_shutdown). | yes |
 | `spawn_agent` | Mint a NEW specialist sub-agent. | yes |
 | `system_status` | Report current CPU, memory, disk usage, and system uptime. | no |
 | `take_screenshot` | Capture the current screen and save it to disk. | yes |
 | `verify_identity` | Capture a webcam frame and report which enrolled person (if any) it matches. | no |
 | `web_search` | Search the web for current information, facts, definitions, or news. | yes |
 
-_28 tools registered._
+_38 tools registered._
 <!-- AUTO-END: capabilities -->
 
 ## Integrations
@@ -105,11 +115,9 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-08-09 | `861a761` | feat: system control, monitoring, wake-word, and face recognition |
 | 2026-08-07 | `4a4f95b` | feat: daily competitive-intelligence brief for the business |
 | 2026-08-04 | `23ffbce` | feat: route short simple turns to a fast model to cut voice TTFB |
-| 2026-07-27 | `519beaa` | Add Trillion and README link |
-| 2026-07-27 | `4cadbe3` | fix: stop silent voice-mic failures + hide user transcript echo |
-| 2026-07-27 | `513a2d8` | perf: cap the OmniRoute embed timeout so a slow router can't stall a reply |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
