@@ -115,6 +115,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-08-13 | `416c42b` | feat: daily brief also proposes an opportunity + an OPSEC-safe post idea |
 | 2026-08-09 | `861a761` | feat: system control, monitoring, wake-word, and face recognition |
 | 2026-08-07 | `4a4f95b` | feat: daily competitive-intelligence brief for the business |
 | 2026-08-04 | `23ffbce` | feat: route short simple turns to a fast model to cut voice TTFB |
