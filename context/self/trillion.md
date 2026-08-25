@@ -76,6 +76,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `restart_system` | Schedule a full system restart (default 30s delay, cancellable via abort_shutdown). | yes |
 | `search_notes` | Search your local notes and documents for a keyword or phrase. | no |
 | `send_email` | Send an email via SMTP. | yes |
+| `show_panel` | Open/highlight one of the Starrdam HUD panels for the user. | no |
 | `shutdown_system` | Schedule a full system shutdown (default 30s delay, cancellable via abort_shutdown). | yes |
 | `spawn_agent` | Mint a NEW specialist sub-agent. | yes |
 | `system_status` | Report current CPU, memory, disk usage, and system uptime. | no |
@@ -83,7 +84,7 @@ in `localStorage`). Remote access is via Tailscale, which proxies as loopback.
 | `verify_identity` | Capture a webcam frame and report which enrolled person (if any) it matches. | no |
 | `web_search` | Search the web for current information, facts, definitions, or news. | yes |
 
-_38 tools registered._
+_39 tools registered._
 <!-- AUTO-END: capabilities -->
 
 ## Integrations
@@ -115,10 +116,8 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-08-14 | `68b17fa` | chore: non-elevated restart path for the Trillion service |
 | 2026-08-13 | `416c42b` | feat: daily brief also proposes an opportunity + an OPSEC-safe post idea |
-| 2026-08-09 | `861a761` | feat: system control, monitoring, wake-word, and face recognition |
-| 2026-08-07 | `4a4f95b` | feat: daily competitive-intelligence brief for the business |
-| 2026-08-04 | `23ffbce` | feat: route short simple turns to a fast model to cut voice TTFB |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents

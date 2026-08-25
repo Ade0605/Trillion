@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from .model_router import pick_model
+from .model_router import pick_model, needs_tools
 
 STRONG = "claude-sonnet-4-6"
 FAST = "claude-haiku-4-5-20251001"
@@ -57,6 +57,30 @@ class Routing(unittest.TestCase):
     def test_disabled_when_models_equal(self):
         self.assertEqual(pick_model("write a novel", strong_model=STRONG, fast_model=STRONG), STRONG)
         self.assertEqual(pick_model("hi", strong_model=STRONG, fast_model=STRONG), STRONG)
+
+
+class ToolGating(unittest.TestCase):
+    def test_chitchat_drops_tools(self):
+        self.assertFalse(needs_tools("hey, how are you?"))
+        self.assertFalse(needs_tools("what's the capital of France?"))
+        self.assertFalse(needs_tools("thanks, that's helpful"))
+
+    def test_tool_cue_keeps_tools(self):
+        self.assertTrue(needs_tools("remind me to call mum"))
+        self.assertTrue(needs_tools("play some jazz"))
+        self.assertTrue(needs_tools("lock my screen"))
+        self.assertTrue(needs_tools("send an email to Sam"))
+        self.assertTrue(needs_tools("what's on my calendar today"))
+        self.assertTrue(needs_tools("open the browser"))
+
+    def test_long_turn_keeps_tools_even_without_cue(self):
+        long = "so I was thinking about the situation earlier and wondered " + \
+               "whether the whole thing really made any sense at all honestly"
+        self.assertTrue(needs_tools(long))
+
+    def test_empty_keeps_tools(self):
+        self.assertTrue(needs_tools(""))
+        self.assertTrue(needs_tools("   "))
 
 
 if __name__ == "__main__":

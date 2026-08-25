@@ -64,3 +64,55 @@ def pick_model(user_input: str, *, strong_model: str, fast_model: str) -> str:
     if not text:
         return strong_model
     return strong_model if _looks_complex(text) else fast_model
+
+
+# ── tool gating ──────────────────────────────────────────────────────────────
+# Sending all ~34 tool definitions costs ~2700 prompt tokens EVERY turn, which
+# raises time-to-first-token even on a cache hit. Most conversational turns
+# (greetings, thanks, factual questions) need no tool at all — for those we send
+# no tools and the prefill roughly halves.
+#
+# Bias is HARD toward keeping tools: a turn that quietly needed a tool but got
+# none just replies in text (mild, recoverable), whereas the speed win only
+# matters on turns that were never going to call a tool. So tools are dropped
+# ONLY for a short turn that contains none of the cue words below.
+_TOOL_CUES = frozenset({
+    # reminders / notes / calendar
+    "remind", "reminder", "reminders", "todo", "task", "tasks", "due", "note",
+    "notes", "calendar", "schedule", "meeting", "event", "events", "appointment",
+    "agenda",
+    # messaging / email
+    "email", "mail", "send", "draft", "message", "reply", "compose", "forward",
+    # web / search / apps
+    "search", "google", "lookup", "website", "url", "link", "browse", "open",
+    "close", "launch", "quit", "app", "application",
+    # media / generation
+    "play", "music", "song", "songs", "video", "image", "picture", "photo",
+    "generate", "draw", "create", "make",
+    # system control
+    "shutdown", "restart", "reboot", "lock", "screenshot", "volume", "system",
+    "status", "abort",
+    # face / identity / sessions / design / agents
+    "face", "enroll", "verify", "identity", "recognize", "rename", "session",
+    "sessions", "history", "design", "screen", "mockup", "panel", "spawn",
+    "agent", "delegate", "show", "list", "set", "add", "delete", "read",
+})
+
+
+def needs_tools(user_input: str, *, max_toolless_words: int = 15) -> bool:
+    """Should this turn be sent WITH the full tool set?
+
+    True (send tools) whenever any tool cue word appears, the turn is long
+    enough to plausibly hide a request, or the input is empty/uncertain.
+    False (drop tools) only for a short, cue-free turn — almost always pure
+    conversation or a factual question.
+    """
+    text = (user_input or "").strip().lower()
+    if not text:
+        return True
+    words = _WORD.findall(text)
+    if set(words) & _TOOL_CUES:
+        return True
+    if len(words) > max_toolless_words:
+        return True
+    return False
