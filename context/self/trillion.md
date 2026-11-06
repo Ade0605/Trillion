@@ -114,7 +114,9 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 ## Recent activity
 
 <!-- AUTO-START: recent -->
-_No commits in the last 14 days._
+| Date | Commit | Change |
+| --- | --- | --- |
+| 2026-11-06 | `eafc90d` | feat: board layer 1 â€” blocks + validators + a page that draws only blocks |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
