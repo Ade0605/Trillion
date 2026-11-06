@@ -114,10 +114,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 ## Recent activity
 
 <!-- AUTO-START: recent -->
-| Date | Commit | Change |
-| --- | --- | --- |
-| 2026-08-14 | `68b17fa` | chore: non-elevated restart path for the Trillion service |
-| 2026-08-13 | `416c42b` | feat: daily brief also proposes an opportunity + an OPSEC-safe post idea |
+_No commits in the last 14 days._
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
