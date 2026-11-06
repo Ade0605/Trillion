@@ -107,6 +107,11 @@ class Agent:
         self.max_tool_calls: int = self.config.get("max_tool_calls_per_turn", 10)
         self.conversation: list[dict] = []
         self._tool_registry = None  # injected by Tier 2
+        try:                        # the web reader's per-conversation context
+            from .web_reader import ReaderContext
+            self._reader = ReaderContext()
+        except Exception:
+            self._reader = None
         self._memory = None         # injected by Tier 4
         self._sessions = None       # working-memory store; persists across restarts
         self._session_id = None
@@ -120,6 +125,26 @@ class Agent:
 
     def attach_tools(self, registry) -> None:
         self._tool_registry = registry
+        # Bind web_fetch to this conversation's allowlist + read state, so the
+        # model can only open addresses the user named or a page already linked.
+        if getattr(self, "_reader", None) is not None:
+            try:
+                from .web_reader import register_web_fetch
+                register_web_fetch(registry, self._reader)
+            except Exception:
+                pass
+
+    def _post_read_gate(self, name) -> bool:
+        """True if `name` has side effects AND a web page was read this turn, so
+        a fetched page can never make the agent act without the user's OK."""
+        r = getattr(self, "_reader", None)
+        if r is None or not r.read.has_read:
+            return False
+        try:
+            from .web_reader import is_side_effect_after_read
+            return is_side_effect_after_read(name)
+        except Exception:
+            return False
 
     def attach_memory(self, memory) -> None:
         self._memory = memory
@@ -298,6 +323,10 @@ class Agent:
         self.conversation.append({"role": "user", "content": user_input})
         self._persist()   # the user turn survives even if the reply is interrupted
         self._recall_for_turn(user_input)   # inject only the memories relevant to this turn
+        # Start the web reader's turn: allow the addresses the user just named,
+        # and clear the "has read outside content" flag.
+        if getattr(self, "_reader", None) is not None:
+            self._reader.start_turn(user_input)
         tool_calls_this_turn = 0
 
         # Pick the model ONCE for the whole turn (including its tool rounds), so
@@ -382,9 +411,14 @@ class Agent:
 
                     if tool_calls_this_turn > self.max_tool_calls:
                         result_text = "Tool call limit reached for this turn."
-                    elif self._tool_registry and self._tool_registry.needs_confirmation(name):
-                        # Gated action: ask the user via whatever waiter is wired
-                        # (terminal input, or the browser via an SSE confirm event).
+                    elif self._tool_registry and (
+                            self._tool_registry.needs_confirmation(name)
+                            or self._post_read_gate(name)):
+                        # Gated action: either an always-gated tool, OR a side
+                        # effect attempted after a web page was read this turn —
+                        # a fetched page must not be able to make the agent act.
+                        # Ask the user via whatever waiter is wired (terminal
+                        # input, or the browser via an SSE confirm event).
                         yield {"confirm_request": {"name": name, "input": inp}}
                         approved = self._confirm_waiter(name, inp)
                         try:

@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-06 | `506df94` | feat: web_reader layer 3 â€” safe fetch + HTML to text + link harvest |
 | 2026-11-06 | `a9453d9` | feat: web_reader layer 2 â€” SSRF + DNS-rebinding guard |
 | 2026-11-06 | `fa0b35d` | feat: web_reader layer 1 â€” canonical addresses + per-conversation allowlist |
 | 2026-11-06 | `eafc90d` | feat: board layer 1 â€” blocks + validators + a page that draws only blocks |
