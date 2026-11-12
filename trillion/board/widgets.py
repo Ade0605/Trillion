@@ -35,7 +35,7 @@ _ALIASES = {
 
 WIDGET_TYPES = (
     "stat", "brief", "next-up", "inbox", "tasks", "opportunities",
-    "sector", "risk-meter", "pipeline", "goal",
+    "sector", "risk-meter", "pipeline", "goal", "custom",
 )
 
 
@@ -172,10 +172,21 @@ def _r_pipeline(w: dict) -> list[dict]:
     return [{"block": "table", "columns": ["Deal", "Stage", "Value"], "rows": rows}]
 
 
+def _r_custom(w: dict) -> list[dict]:
+    """A custom card: the model supplies the blocks directly (used only when no
+    ready widget fits). Validated by build_widget like any other blocks, so a
+    custom card can't look or behave differently from the rest."""
+    blocks = w["data"].get("blocks")
+    if not isinstance(blocks, list) or not blocks:
+        raise WidgetError("custom: blocks (a list of blocks) is required")
+    return blocks
+
+
 _RECIPES = {
     "stat": _r_stat, "brief": _r_brief, "next-up": _r_next_up, "inbox": _r_inbox,
     "tasks": _r_tasks, "opportunities": _r_opps, "sector": _r_sector,
     "risk-meter": _r_meter, "goal": _r_meter, "pipeline": _r_pipeline,
+    "custom": _r_custom,
 }
 
 # one-line field hints for the tool description (Layer 3 reads these)
@@ -190,6 +201,7 @@ FIELD_HINTS = {
     "risk-meter": "value(0-100), label?, caption?, tone?",
     "goal": "value(0-100), label?, caption?",
     "pipeline": "deals[]: {name, stage, value}",
+    "custom": "blocks[]: a list of blocks — use ONLY when no widget above fits",
 }
 
 

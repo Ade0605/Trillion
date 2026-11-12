@@ -11,7 +11,7 @@ from .widgets import WIDGET_TYPES
 
 # Widgets always available — the user can dictate these without any integration.
 CORE = ("stat", "brief", "next-up", "tasks", "goal", "sector", "risk-meter",
-        "opportunities")
+        "opportunities", "custom")
 
 # pack name -> {widgets it adds, apps that switch it on}
 PACKS = {

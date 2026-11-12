@@ -25,6 +25,7 @@ _WIDGET_ITEM = {
         "events": {"type": "array"}, "items": {"type": "array"},
         "deals": {"type": "array"}, "sector": {"type": "string"},
         "note": {"type": "string"}, "caption": {"type": "string"},
+        "blocks": {"type": "array", "description": "for type 'custom' only"},
     },
     "required": ["type"],
 }
