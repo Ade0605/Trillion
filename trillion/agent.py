@@ -112,6 +112,11 @@ class Agent:
             self._reader = ReaderContext()
         except Exception:
             self._reader = None
+        try:                        # the visual board's live state
+            from .board.state import BoardStore
+            self._board = BoardStore()
+        except Exception:
+            self._board = None
         self._memory = None         # injected by Tier 4
         self._sessions = None       # working-memory store; persists across restarts
         self._session_id = None
@@ -131,6 +136,12 @@ class Agent:
             try:
                 from .web_reader import register_web_fetch
                 register_web_fetch(registry, self._reader)
+            except Exception:
+                pass
+        if getattr(self, "_board", None) is not None:
+            try:
+                from .board.tools import register_board_tools
+                register_board_tools(registry, self._board)
             except Exception:
                 pass
 

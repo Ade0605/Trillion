@@ -207,18 +207,26 @@ function renderWidget(w){const card=el('div','card');
     s.textContent=(w.source||'')+(w.source&&w.updated?' · ':'')+(w.updated||'');card.append(s);}
   return card;}
 
+const VIEWS={
+  '':      {url:'/api/board',         title:'Board', kind:'widgets'},
+  widgets: {url:'/api/board/widgets', title:'Board — widgets (samples)', kind:'widgets'},
+  blocks:  {url:'/api/board/samples', title:'Board — blocks (samples)', kind:'blocks'},
+};
 async function load(){
   const board=document.getElementById('board');board.textContent='';
-  const blocksMode=new URL(location.href).searchParams.get('view')==='blocks';
-  document.getElementById('title').textContent=blocksMode?'Board — blocks':'Board — widgets';
+  const v=VIEWS[new URL(location.href).searchParams.get('view')||'']||VIEWS[''];
+  document.getElementById('title').textContent=v.title;
   try{
-    const r=await fetch(blocksMode?'/api/board/samples':'/api/board/widgets');
+    const r=await fetch(v.url);
     if(!r.ok){board.append(el('div','err','Could not load ('+r.status+')'));return;}
     const data=await r.json();
-    if(blocksMode)(data.blocks||[]).forEach(b=>board.append(renderBlock(b)));
-    else (data.widgets||[]).forEach(w=>board.append(renderWidget(w)));
+    if(v.kind==='blocks'){(data.blocks||[]).forEach(b=>board.append(renderBlock(b)));return;}
+    const ws=data.widgets||[];
+    if(!ws.length){board.append(el('div','v-hint','The board is empty. Ask Trillion to show you something.'));return;}
+    ws.forEach(w=>board.append(renderWidget(w)));
   }catch(e){board.append(el('div','err','Load error'));}
 }
+setInterval(load, 4000);   // reflect what the agent puts up (snapshot poll)
 
 /* theme toggle: dark default (cosmos), remembers choice */
 (function(){const root=document.documentElement;
