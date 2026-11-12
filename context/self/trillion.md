@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-12 | `8507305` | perf: reuse one Deepgram client â€” STT 1810ms -> 869ms |
 | 2026-11-12 | `5f111de` | fix: Deepgram STT broken on sdk v7 + add honest voice stopwatch |
 | 2026-11-12 | `cfa5259` | feat: board layer 7 â€” tap-to-ask (safe), completing the board |
 | 2026-11-12 | `90a2de7` | feat: board layer 6 â€” custom widget from the same blocks |

@@ -15,6 +15,18 @@ import yaml
 _ROOT = Path(__file__).parent.parent.parent
 _stop_event = threading.Event()
 
+# One ElevenLabs client for the process, so its HTTP connection pool is reused
+# across turns instead of a fresh TLS handshake on every /api/tts.
+_eleven = None
+
+
+def client():
+    global _eleven
+    if _eleven is None:
+        import elevenlabs
+        _eleven = elevenlabs.ElevenLabs(api_key=os.environ.get("ELEVENLABS_API_KEY", ""))
+    return _eleven
+
 
 def _load_config() -> dict:
     with open(_ROOT / "config.yml") as f:
