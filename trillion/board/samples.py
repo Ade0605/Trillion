@@ -45,3 +45,42 @@ _RAW: dict[str, dict] = {
 def sample_blocks() -> list[dict]:
     """Every block type, validated, in a stable order."""
     return [validate_block(_RAW[t]) for t in BLOCK_TYPES]
+
+
+# One realistic example of each widget (Starrdam-flavoured), for the style page.
+_RAW_WIDGETS = [
+    {"type": "stat", "title": "Revenue this year", "label": "Revenue",
+     "value": "$184,000", "delta": "+12% vs last year", "tone": "good",
+     "hint": "Through November", "source": "accounts"},
+    {"type": "brief", "title": "Competitive brief",
+     "text": "Tantita's Jan VTOL move still owns the drone narrative; aviation stays uncontested.",
+     "points": ["Call NCAA", "Aviation wedge", "No new signals"], "source": "daily"},
+    {"type": "next-up", "title": "Next up",
+     "events": [{"time": "09:00", "title": "Ops standup"},
+                {"time": "11:30", "title": "Client walk-through", "detail": "Bank HQ perimeter", "tone": "attention"},
+                {"time": "15:00", "title": "Tender review"}], "source": "calendar"},
+    {"type": "inbox", "title": "Needs a reply",
+     "items": [{"subject": "NCAA tender query", "from": "aviation@ncaa", "when": "2h", "urgent": True},
+               {"subject": "Drone MRO quote", "from": "ops", "when": "1d"}], "source": "mail"},
+    {"type": "tasks", "title": "Tasks",
+     "items": [{"title": "Sign off MRO quote", "due": "today", "urgent": True},
+               {"title": "Call Port Harcourt lead", "due": "3d"}]},
+    {"type": "opportunities", "title": "Opportunities",
+     "items": [{"title": "Aviation security", "detail": "Uncontested vs Tantita", "meta": "high"},
+               {"title": "Counter-UAS", "detail": "Defensive drone niche", "meta": "open"}]},
+    {"type": "sector", "title": "Sector spotlight", "sector": "Aviation",
+     "note": "22 NCAA airports, fragmented guarding, zero integrated intel."},
+    {"type": "risk-meter", "title": "Threat level", "value": 38,
+     "caption": "Moderate — Gulf of Guinea", "tone": "attention"},
+    {"type": "pipeline", "title": "Pipeline",
+     "deals": [{"name": "Aviation Authority", "stage": "Proposal", "value": "$48k"},
+               {"name": "Port Security", "stage": "Negotiation", "value": "$120k"},
+               {"name": "Bank HQ", "stage": "Qualified", "value": "$32k"}], "source": "crm"},
+    {"type": "goal", "title": "Q4 target", "value": 68, "caption": "68% of $250k", "tone": "good"},
+]
+
+
+def sample_widgets() -> list[dict]:
+    """Every widget type, validated + expanded into blocks, for the style page."""
+    from .widgets import build_board
+    return build_board(_RAW_WIDGETS, now="just now")

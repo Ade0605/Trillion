@@ -44,6 +44,8 @@
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
     padding:16px;overflow:hidden;}
   .card .ctype{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+  .card .wtitle{font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;letter-spacing:.01em}
+  .card .source{font-size:10px;color:var(--faint);margin-top:14px;letter-spacing:.04em;border-top:1px solid var(--border);padding-top:8px}
   /* value */
   .v-label{font-size:12px;color:var(--muted)}
   .v-value{font-size:30px;font-weight:650;margin:3px 0;line-height:1.1}
@@ -191,19 +193,30 @@ function donut(s){const S=120,r=46,ir=30,cx=S/2,cy=S/2;const pts=s.points||[];co
     svg.append(sv('path',{d:`M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1} L${x2} ${y2} A${ir} ${ir} 0 ${large} 0 ${x3} ${y3} Z`,fill:cols[i%cols.length],opacity:.9}));
     a0=a1;});return svg;}
 
-function renderBlock(b){const card=el('div','card');card.append(el('div','ctype',b.block));
-  const fn=R[b.block];
-  if(fn){try{card.append(fn(b));}catch(e){card.append(el('div','err','render error'));}}
-  else card.append(el('div','err','unknown block: '+b.block));
+function blockInto(parent,b){const fn=R[b.block];
+  if(fn){try{parent.append(fn(b));}catch(e){parent.append(el('div','err','render error'));}}
+  else parent.append(el('div','err','unknown block: '+b.block));}
+
+function renderBlock(b){const card=el('div','card');card.append(el('div','ctype',b.block));blockInto(card,b);return card;}
+
+/* a widget card: optional title, its blocks, then a server-stamped source line */
+function renderWidget(w){const card=el('div','card');
+  if(w.title)card.append(el('div','wtitle',w.title));
+  (w.blocks||[]).forEach(b=>blockInto(card,b));
+  if(w.source||w.updated){const s=el('div','source');
+    s.textContent=(w.source||'')+(w.source&&w.updated?' · ':'')+(w.updated||'');card.append(s);}
   return card;}
 
 async function load(){
   const board=document.getElementById('board');board.textContent='';
+  const blocksMode=new URL(location.href).searchParams.get('view')==='blocks';
+  document.getElementById('title').textContent=blocksMode?'Board — blocks':'Board — widgets';
   try{
-    const r=await fetch('/api/board/samples');
-    if(!r.ok){board.append(el('div','err','Could not load samples ('+r.status+')'));return;}
+    const r=await fetch(blocksMode?'/api/board/samples':'/api/board/widgets');
+    if(!r.ok){board.append(el('div','err','Could not load ('+r.status+')'));return;}
     const data=await r.json();
-    (data.blocks||[]).forEach(b=>board.append(renderBlock(b)));
+    if(blocksMode)(data.blocks||[]).forEach(b=>board.append(renderBlock(b)));
+    else (data.widgets||[]).forEach(w=>board.append(renderWidget(w)));
   }catch(e){board.append(el('div','err','Load error'));}
 }
 
