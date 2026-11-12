@@ -26,6 +26,8 @@ _WIDGET_ITEM = {
         "deals": {"type": "array"}, "sector": {"type": "string"},
         "note": {"type": "string"}, "caption": {"type": "string"},
         "blocks": {"type": "array", "description": "for type 'custom' only"},
+        "asks": {"type": "array", "items": {"type": "string"},
+                 "description": "up to 2 short tap-questions (no links)"},
     },
     "required": ["type"],
 }

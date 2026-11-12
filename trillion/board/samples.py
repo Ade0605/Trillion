@@ -51,7 +51,8 @@ def sample_blocks() -> list[dict]:
 _RAW_WIDGETS = [
     {"type": "stat", "title": "Revenue this year", "label": "Revenue",
      "value": "$184,000", "delta": "+12% vs last year", "tone": "good",
-     "hint": "Through November", "source": "accounts"},
+     "hint": "Through November", "source": "accounts",
+     "asks": ["What changed since last month?", "Which sector drove it?"]},
     {"type": "brief", "title": "Competitive brief",
      "text": "Tantita's Jan VTOL move still owns the drone narrative; aviation stays uncontested.",
      "points": ["Call NCAA", "Aviation wedge", "No new signals"], "source": "daily"},
@@ -77,6 +78,11 @@ _RAW_WIDGETS = [
                {"name": "Port Security", "stage": "Negotiation", "value": "$120k"},
                {"name": "Bank HQ", "stage": "Qualified", "value": "$32k"}], "source": "crm"},
     {"type": "goal", "title": "Q4 target", "value": 68, "caption": "68% of $250k", "tone": "good"},
+    {"type": "custom", "title": "Readiness", "blocks": [
+        {"block": "facts", "items": [{"label": "Operatives", "value": "200+"},
+                                     {"label": "Coverage", "value": "50+ areas"}]},
+        {"block": "chips", "items": [{"text": "24/7", "tone": "good"}, {"text": "Licensed"}]},
+    ]},
 ]
 
 

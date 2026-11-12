@@ -323,10 +323,13 @@ class Agent:
             i += 1
         return repaired
 
-    def run_turn(self, user_input: str) -> Generator[str, None, None]:
+    def run_turn(self, user_input: str, tapped: bool = False) -> Generator[str, None, None]:
         """
         Process one user turn. Yields text chunks as they stream.
         Handles tool-call loops transparently (Tier 2 wires the registry).
+
+        `tapped=True` marks a board tap-to-ask: it's treated as read content, so
+        it can never approve a pending action or run a side effect on its own.
         """
         # An earlier turn may have been cut off mid tool-loop; never send a
         # malformed history to the API.
@@ -338,6 +341,11 @@ class Agent:
         # and clear the "has read outside content" flag.
         if getattr(self, "_reader", None) is not None:
             self._reader.start_turn(user_input)
+            # A tapped board question is not the user speaking: treat it like read
+            # content, so any side effect it triggers needs explicit approval and
+            # it can never silently act (or approve a pending action).
+            if tapped:
+                self._reader.read.mark_read()
         tool_calls_this_turn = 0
 
         # Pick the model ONCE for the whole turn (including its tool rounds), so

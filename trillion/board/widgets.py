@@ -15,6 +15,8 @@ arrows and check marks are kept).
 """
 from __future__ import annotations
 
+import re
+
 from . import caps
 from .blocks import validate_block, validate_blocks, BlockError
 
@@ -64,6 +66,28 @@ def strip_emoji(text: object) -> str:
 
 def _clean(text: object, limit: int) -> str:
     return caps.clip(strip_emoji(text), limit)
+
+
+# A widget's "ask" is written by the model, possibly from something it read, so
+# it must never become a way to make the user send a link or run an instruction.
+_ASK_URLISH = re.compile(r"https?://|www\.|\b[a-z0-9-]+\.[a-z]{2,}\b", re.I)
+_ASK_ROLE = re.compile(r"^\s*(?:\[|system\b|assistant\b|user\b|<)", re.I)
+
+
+def sanitize_asks(raw: object) -> list[str]:
+    """Return at most two safe tap-questions. Drops any that contain a web
+    address or look like system/role text."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for a in raw:
+        s = _clean(a, caps.LABEL)
+        if not s or _ASK_URLISH.search(s) or _ASK_ROLE.match(s):
+            continue
+        out.append(s)
+        if len(out) >= 2:
+            break
+    return out
 
 
 def _items(data: dict, where: str) -> list:
@@ -244,6 +268,9 @@ def build_widget(raw: object, *, now: str = "just now") -> dict:
         out["title"] = _clean(raw.get("title"), caps.TITLE)
     if raw.get("source"):
         out["source"] = _clean(raw.get("source"), caps.LABEL)
+    asks = sanitize_asks(raw.get("asks"))
+    if asks:
+        out["asks"] = asks
     return out
 
 

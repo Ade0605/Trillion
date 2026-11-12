@@ -46,6 +46,10 @@
   .card .ctype{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
   .card .wtitle{font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;letter-spacing:.01em}
   .card .source{font-size:10px;color:var(--faint);margin-top:14px;letter-spacing:.04em;border-top:1px solid var(--border);padding-top:8px}
+  .card .asks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .card .ask{font-size:11px;color:var(--accent);background:transparent;border:1px solid var(--accent-dim);
+    border-radius:16px;padding:5px 11px;cursor:pointer;font-family:inherit}
+  .card .ask:hover{background:var(--card2)} .card .ask:disabled{opacity:.5;cursor:default}
   /* value */
   .v-label{font-size:12px;color:var(--muted)}
   .v-value{font-size:30px;font-weight:650;margin:3px 0;line-height:1.1}
@@ -203,9 +207,21 @@ function renderBlock(b){const card=el('div','card');card.append(el('div','ctype'
 function renderWidget(w){const card=el('div','card');
   if(w.title)card.append(el('div','wtitle',w.title));
   (w.blocks||[]).forEach(b=>blockInto(card,b));
+  if(w.asks&&w.asks.length){const a=el('div','asks');
+    w.asks.forEach(q=>{const btn=el('button','ask',q);btn.onclick=()=>sendTap(q,btn);a.append(btn);});
+    card.append(a);}
   if(w.source||w.updated){const s=el('div','source');
     s.textContent=(w.source||'')+(w.source&&w.updated?' · ':'')+(w.updated||'');card.append(s);}
   return card;}
+
+/* A tap sends the question as a NEW message, marked as coming from a tap. The
+   server treats a tapped message as read content: it can never approve or act. */
+async function sendTap(q, btn){
+  if(btn){btn.disabled=true;}
+  try{ await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message:q, tapped:true})}); }catch(e){}
+  setTimeout(load, 800);   // reflect anything the agent put up in response
+}
 
 const VIEWS={
   '':      {url:'/api/board',         title:'Board', kind:'widgets'},
