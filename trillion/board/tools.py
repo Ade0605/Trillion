@@ -30,24 +30,34 @@ _WIDGET_ITEM = {
 }
 
 
-def _types_doc() -> str:
-    return "\n".join(f"- {t}: {FIELD_HINTS.get(t, '')}" for t in WIDGET_TYPES)
+def build_show_description(types=WIDGET_TYPES) -> str:
+    """The board_show description, listing only the given (active) widget types."""
+    types_doc = "\n".join(f"- {t}: {FIELD_HINTS.get(t, '')}" for t in types)
+    return (
+        "Show widgets on the visual board beside the conversation. Use when an "
+        "answer is better seen than heard: a set of numbers, figures to compare, "
+        "a plan, or more than three items. Then say ONE short line about it out "
+        "loud — never read the board's contents aloud. Call a widget by what it "
+        "shows, never by id. Never fill a card with invented data; if a source "
+        "isn't connected, say so. Pass a list of widgets; each has a 'type' and "
+        "that type's fields:\n" + types_doc +
+        "\nAny widget may also carry title and source. Set replace=false to add "
+        "to what's already shown instead of replacing it.")
 
 
-SHOW_DESCRIPTION = (
-    "Show widgets on the visual board beside the conversation. Use when an answer "
-    "is better seen than heard: a set of numbers, figures to compare, a plan, or "
-    "more than three items. Then say ONE short line about it out loud — never "
-    "read the board's contents aloud. Call a widget by what it shows, never by "
-    "id. Never fill a card with invented data; if a source isn't connected, say "
-    "so. Pass a list of widgets; each has a 'type' and that type's fields:\n"
-    + _types_doc()
-    + "\nAny widget may also carry title and source. Set replace=false to add to "
-    "what's already shown instead of replacing it."
-)
+# Full description (all widgets) — the default and what tests check the budget on.
+SHOW_DESCRIPTION = build_show_description()
 
 
-def register_board_tools(registry, store: BoardStore) -> None:
+def register_board_tools(registry, store: BoardStore, *, connected=None) -> None:
+    """Register the board tools. When `connected` (a set of connected app names)
+    is given, only core widgets plus the packs those apps switch on are described
+    to the model; call again to recompute when connections change."""
+    if connected is None:
+        description = SHOW_DESCRIPTION
+    else:
+        from .packs import active_widget_types
+        description = build_show_description(active_widget_types(connected))
     def board_show(widgets, replace=True):
         try:
             shown = store.show(widgets, replace=bool(replace))
@@ -71,7 +81,7 @@ def register_board_tools(registry, store: BoardStore) -> None:
         removed = store.remove(target)
         return f"Removed {len(removed)} widget(s)." if removed else "Nothing matched."
 
-    registry.register(name="board_show", description=SHOW_DESCRIPTION,
+    registry.register(name="board_show", description=description,
                       input_schema={"type": "object", "properties": {
                           "widgets": {"type": "array", "items": _WIDGET_ITEM},
                           "replace": {"type": "boolean"}},
