@@ -19,10 +19,10 @@ def transcribe(audio_bytes: bytes, mime_type: str = "audio/wav") -> str:
         from deepgram import DeepgramClient
 
         client = DeepgramClient(api_key=key)
-        payload = {"buffer": audio_bytes, "mimetype": mime_type}
-        options = {"model": "nova-2", "smart_format": True, "punctuate": True}
-
-        response = client.listen.rest.v("1").transcribe_file(payload, options)
+        # deepgram-sdk v7: client.listen.v1.media.transcribe_file(request=<bytes>, ...).
+        # (The old v3/v4 `client.listen.rest.v("1")` path was removed and 502'd.)
+        response = client.listen.v1.media.transcribe_file(
+            request=audio_bytes, model="nova-2", smart_format=True, punctuate=True)
         transcript = response.results.channels[0].alternatives[0].transcript
         return transcript.strip()
 
