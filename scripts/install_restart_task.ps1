@@ -33,21 +33,43 @@ if (-not (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) {
 
 $me = "$env:USERDOMAIN\$env:USERNAME"
 
-# The task simply restarts the service. -WindowStyle Hidden so no console flashes.
-$action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command `"Restart-Service -Name '$ServiceName' -Force`""
+# Registered via the Task Scheduler COM API so we can set a security descriptor:
+# the task RUNS as SYSTEM (a service account — no UAC consent, unlike a user +
+# Highest principal, which fails a non-interactive trigger with 0x800710E0), and
+# its SDDL grants Authenticated Users read+execute so ANY signed-in user can
+# TRIGGER it with `schtasks /run` without being an administrator. SYSTEM alone is
+# not enough: without this SDDL a non-admin trigger returns "Access is denied".
+$cmd = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ""Restart-Service -Name '$ServiceName' -Force"""
 
-# Highest run level = the task runs elevated when triggered, so it can control
-# the service. Interactive logon = runs as the signed-in user (the owner), who
-# can then trigger it without a UAC prompt.
-$principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Highest
+$svc = New-Object -ComObject Schedule.Service
+$svc.Connect()
+$root = $svc.GetFolder("\")
 
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+$def = $svc.NewTask(0)
+$def.RegistrationInfo.Description = "Restarts the Trillion service on demand (no elevation needed to trigger)."
+$def.Principal.UserId = "SYSTEM"
+$def.Principal.LogonType = 5          # TASK_LOGON_SERVICE_ACCOUNT
+$def.Principal.RunLevel = 1           # TASK_RUNLEVEL_HIGHEST
+$def.Settings.Enabled = $true
+$def.Settings.AllowDemandStart = $true
+$def.Settings.StartWhenAvailable = $true
+$def.Settings.DisallowStartIfOnBatteries = $false
+$def.Settings.StopIfGoingOnBatteries = $false
+$def.Settings.MultipleInstances = 3   # TASK_INSTANCES_STOP_EXISTING
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Principal $principal -Settings $settings `
-    -Description "Restarts the Trillion Windows service on demand (no elevation needed to trigger)." -Force | Out-Null
+$act = $def.Actions.Create(0)         # TASK_ACTION_EXEC
+$act.Path = "powershell.exe"
+$act.Arguments = $cmd
 
-Write-Host "== registered task '$TaskName' (runs as $me, elevated)."
+# D: owner SYSTEM/Admins full (GA); Authenticated Users read+execute (GRGX) so a
+# standard user can run it on demand.
+$sddl = "D:(A;;GA;;;BA)(A;;GA;;;SY)(A;;GRGX;;;AU)"
+
+# RegisterTaskDefinition(path, def, flags=6 CREATE_OR_UPDATE, user='SYSTEM',
+#   password=$null, logonType=5 SERVICE_ACCOUNT, sddl)
+$root.RegisterTaskDefinition($TaskName, $def, 6, "SYSTEM", $null, 5, $sddl) | Out-Null
+
+Write-Host "== registered task '$TaskName' (runs as SYSTEM; any user may trigger it)."
 Write-Host "== from now on, restart with NO admin needed:"
 Write-Host "     scripts\restart-trillion.cmd"
 Write-Host "   or:"
