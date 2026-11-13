@@ -104,7 +104,7 @@
 <div id="hud"><span class="dot" id="hud-dot"></span><span id="brand">TRILLION</span><span id="state-text">idle</span></div>
 <div id="controls">
   <span id="theme" role="group" aria-label="Theme">
-    <button id="theme-dark" class="on" title="Dark">☾</button><button id="theme-light" title="Light">☀</button>
+    <button id="theme-dark" title="Dark">☾</button><button id="theme-auto" title="Match system">◐</button><button id="theme-light" title="Light">☀</button>
   </span>
   <button id="board-btn" title="Show the board">▦ board</button>
   <button id="perf-btn" title="Performance mode">perf</button>
@@ -562,33 +562,40 @@ function _flipBlending(root, light){
     });
   });
 }
-function applyTheme(light){
+function applyTheme(light){           // the visual switch (dark vs light)
   LIGHT = !!light;
   skyUniforms.uLight.value = LIGHT ? 1 : 0;
   _flipBlending(orbScene, LIGHT);
   _flipBlending(netScene, LIGHT);
   document.documentElement.setAttribute('data-theme', LIGHT ? 'light' : 'dark');
-  document.getElementById('theme-dark').classList.toggle('on', !LIGHT);
-  document.getElementById('theme-light').classList.toggle('on', LIGHT);
-  try{ localStorage.setItem('cosmos_theme', LIGHT ? 'light' : 'dark'); }catch(e){}
 }
+
+/* Three modes: dark, light, or auto (follow the OS and keep following it). */
+const _mq = matchMedia('(prefers-color-scheme: light)');
+let themeMode = 'auto';
+function _resolveLight(){ return themeMode === 'light' || (themeMode === 'auto' && _mq.matches); }
+function setThemeMode(mode){
+  themeMode = (mode === 'light' || mode === 'dark') ? mode : 'auto';
+  try{ localStorage.setItem('cosmos_theme', themeMode); }catch(e){}
+  ['dark','auto','light'].forEach(m=>document.getElementById('theme-'+m).classList.toggle('on', m === themeMode));
+  applyTheme(_resolveLight());
+}
+_mq.addEventListener('change', ()=>{ if(themeMode === 'auto') applyTheme(_resolveLight()); });
 
 const Cosmos = {
   setState, dispatch, setWorking, addAgent:(d)=>addAgent(d),
   setPerf:(on)=>{ perfMode=on; bgRenderer.setPixelRatio(bgPixelRatio()); onResize(); document.getElementById('perf-btn').classList.toggle('on',on); },
-  setTheme:(light)=>applyTheme(light),
+  setTheme:(m)=>setThemeMode(m===true?'light':m===false?'dark':m),
   audioFromElement:(el)=>audio.attach(el), audioFromStream:(s)=>audio.attachStream(s),
   _agents:agents,
 };
 window.Cosmos = Cosmos;
 
 document.getElementById('perf-btn').onclick=()=>Cosmos.setPerf(!perfMode);
-document.getElementById('theme-dark').onclick=()=>applyTheme(false);
-document.getElementById('theme-light').onclick=()=>applyTheme(true);
-/* default: remembered choice, else the OS preference */
+['dark','auto','light'].forEach(m=>document.getElementById('theme-'+m).onclick=()=>setThemeMode(m));
+/* default: remembered mode (dark/light/auto), else auto (follow the OS) */
 (function(){ let t=null; try{ t=localStorage.getItem('cosmos_theme'); }catch(e){}
-  if(!t) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  if(t==='light') applyTheme(true); })();
+  setThemeMode(['dark','light','auto'].includes(t) ? t : 'auto'); })();
 
 /* demo driver — keeps the scene alive with no backend, until real events arrive */
 let demoT=0, demoIdx=0;
