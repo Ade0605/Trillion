@@ -12,6 +12,7 @@ from __future__ import annotations
 from .dossier import (parse_dossier, load_seat, Seat, Doctrine, DossierError,
                       VERIFICATION)
 from .gate import gate_citations, is_unsourced
+from .roster import load_roster
 
 __all__ = ["parse_dossier", "load_seat", "Seat", "Doctrine", "DossierError",
-           "VERIFICATION", "gate_citations", "is_unsourced"]
+           "VERIFICATION", "gate_citations", "is_unsourced", "load_roster"]

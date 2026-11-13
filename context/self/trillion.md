@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-13 | `3340f3e` | feat: board of advisors tier 1 â€” dossier format + citation gate |
 | 2026-11-13 | `bd7752c` | feat: cosmos theme gains an auto (match-system) mode |
 | 2026-11-13 | `f1adcdc` | feat: cosmos light mode â€” dawn sky, sun/moon switch |
 | 2026-11-13 | `b3987a8` | feat: cosmos arming state â€” honest "mic requested, no audio yet" |
@@ -130,7 +131,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-11-12 | `90a2de7` | feat: board layer 6 â€” custom widget from the same blocks |
 | 2026-11-12 | `569b056` | feat: board layer 5 â€” packs gate widgets by connected app |
 | 2026-11-12 | `5791218` | feat: board layer 4 â€” design system written down |
-| 2026-11-12 | `248c98f` | feat: board layer 3 â€” show/update/remove tools + live board |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
