@@ -35,6 +35,20 @@
     color:#9fc4d6; font-size:11px; padding:6px 10px; border-radius:20px; cursor:pointer; backdrop-filter:blur(6px); }
   #controls button:hover{ border-color:var(--accent); color:#eaf7ff; }
   #controls button.on{ border-color:var(--accent); color:var(--accent); }
+  #theme{ display:inline-flex; }
+  #theme button{ width:30px; padding:4px 0; }
+  /* ── light-mode UI (the scene itself is themed via the uLight shader uniform) ── */
+  :root[data-theme="light"] body{ color:#15303d; }
+  :root[data-theme="light"] #brand{ color:#12343f; }
+  :root[data-theme="light"] #state-text{ color:#5a7a88; }
+  :root[data-theme="light"] #controls button{ background:#ffffffd0; border-color:#cfe0e6; color:#3a5a68; }
+  :root[data-theme="light"] #controls button:hover,
+  :root[data-theme="light"] #controls button.on{ border-color:var(--accent); color:var(--accent); }
+  :root[data-theme="light"] #composer{ background:#ffffffcc; border-bottom-color:#cfe0e6; }
+  :root[data-theme="light"] #composer textarea{ color:#15303d; }
+  :root[data-theme="light"] #composer textarea::placeholder{ color:#8aa6b2; }
+  :root[data-theme="light"] #subtitle{ color:#23414f; }
+  :root[data-theme="light"] #subtitle.you{ color:#5a7a88; }
   /* Dock bar (docking targets for working agents) */
   #dock{ position:fixed; bottom:78px; left:50%; transform:translateX(-50%); z-index:3;
     display:flex; gap:14px; pointer-events:none; }
@@ -89,6 +103,9 @@
 <div id="labels"></div>
 <div id="hud"><span class="dot" id="hud-dot"></span><span id="brand">TRILLION</span><span id="state-text">idle</span></div>
 <div id="controls">
+  <span id="theme" role="group" aria-label="Theme">
+    <button id="theme-dark" class="on" title="Dark">☾</button><button id="theme-light" title="Light">☀</button>
+  </span>
   <button id="board-btn" title="Show the board">▦ board</button>
   <button id="perf-btn" title="Performance mode">perf</button>
 </div>
@@ -332,13 +349,13 @@ const skyScene = new THREE.Scene();
 const skyCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 const skyUniforms = {
   uRes:{value:new THREE.Vector2(innerWidth,innerHeight)}, uTime:{value:0}, uFade:{value:0},
-  uGlowColor:{value:new THREE.Color(0.16,0.85,0.95)}, uGlow:{value:0.34},
+  uGlowColor:{value:new THREE.Color(0.16,0.85,0.95)}, uGlow:{value:0.34}, uLight:{value:0},
 };
 const skyQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMaterial({
   uniforms:skyUniforms, depthWrite:false,
   vertexShader:`void main(){ gl_Position=vec4(position,1.0); }`,
   fragmentShader: NOISE_GLSL + `
-    uniform vec2 uRes; uniform float uTime,uFade,uGlow; uniform vec3 uGlowColor;
+    uniform vec2 uRes; uniform float uTime,uFade,uGlow,uLight; uniform vec3 uGlowColor;
     // 3 octaves, not 5: this runs per-pixel across three nebula layers, so each
     // extra octave costs a full-screen noise evaluation. At this scale the top
     // two octaves are visually indistinguishable and cost ~40% of the frame.
@@ -367,7 +384,16 @@ const skyQuad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMat
       col += vec3(0.95,0.97,1.0)*starLayer(vec2(uv.x*aspect,uv.y)+7.0,55.0,0.09,1.6)*1.5;
       col += uGlowColor*uGlow*smoothstep(0.55,0.0,r)*0.7;
       col *= smoothstep(1.25,0.35,r);
-      gl_FragColor=vec4(col*uFade,1.0);
+      // ── light mode: pale dawn, nebula as soft tints, no stars ──
+      vec3 lcol = vec3(0.90,0.93,0.97);
+      lcol -= vec3(0.05,0.045,0.03)*r;
+      lcol += vec3(0.02,0.14,0.11)*smoothstep(0.2,0.9,n1)*0.14;
+      lcol += vec3(0.16,0.03,0.14)*smoothstep(0.3,0.95,n2)*0.08;
+      lcol += vec3(0.03,0.07,0.18)*smoothstep(0.2,0.9,n3)*0.10;
+      lcol += uGlowColor*uGlow*smoothstep(0.5,0.0,r)*0.16;
+      lcol *= smoothstep(1.5,0.15,r);
+      vec3 outc = mix(col, lcol, uLight);
+      gl_FragColor=vec4(outc*uFade,1.0);
     }`
 }));
 skyScene.add(skyQuad);
@@ -521,15 +547,48 @@ function screenToWorld(cx,cy){
 
 /* ═══════════════════════ TIER 6 — public API + demo driver + chat ═════════ */
 let realEvents=false;   // once true, demo driver stops
+/* ── theme ───────────────────────────────────────────────────────────────────
+   The scene is themed by one shader uniform (uLight) plus a blending flip:
+   additive glow vanishes on a pale background, so in light mode every additive
+   material becomes normal-blended and the stars are turned off in the sky. */
+let LIGHT = false;
+function _flipBlending(root, light){
+  root.traverse(o=>{
+    if(!o.material) return;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    ms.forEach(m=>{
+      if(m.userData._add === undefined) m.userData._add = (m.blending === THREE.AdditiveBlending);
+      if(m.userData._add){ m.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending; m.needsUpdate = true; }
+    });
+  });
+}
+function applyTheme(light){
+  LIGHT = !!light;
+  skyUniforms.uLight.value = LIGHT ? 1 : 0;
+  _flipBlending(orbScene, LIGHT);
+  _flipBlending(netScene, LIGHT);
+  document.documentElement.setAttribute('data-theme', LIGHT ? 'light' : 'dark');
+  document.getElementById('theme-dark').classList.toggle('on', !LIGHT);
+  document.getElementById('theme-light').classList.toggle('on', LIGHT);
+  try{ localStorage.setItem('cosmos_theme', LIGHT ? 'light' : 'dark'); }catch(e){}
+}
+
 const Cosmos = {
   setState, dispatch, setWorking, addAgent:(d)=>addAgent(d),
   setPerf:(on)=>{ perfMode=on; bgRenderer.setPixelRatio(bgPixelRatio()); onResize(); document.getElementById('perf-btn').classList.toggle('on',on); },
+  setTheme:(light)=>applyTheme(light),
   audioFromElement:(el)=>audio.attach(el), audioFromStream:(s)=>audio.attachStream(s),
   _agents:agents,
 };
 window.Cosmos = Cosmos;
 
 document.getElementById('perf-btn').onclick=()=>Cosmos.setPerf(!perfMode);
+document.getElementById('theme-dark').onclick=()=>applyTheme(false);
+document.getElementById('theme-light').onclick=()=>applyTheme(true);
+/* default: remembered choice, else the OS preference */
+(function(){ let t=null; try{ t=localStorage.getItem('cosmos_theme'); }catch(e){}
+  if(!t) t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  if(t==='light') applyTheme(true); })();
 
 /* demo driver — keeps the scene alive with no backend, until real events arrive */
 let demoT=0, demoIdx=0;

@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-13 | `b3987a8` | feat: cosmos arming state â€” honest "mic requested, no audio yet" |
 | 2026-11-13 | `121e663` | test: add /board to the front-door enumeration test |
 | 2026-11-13 | `7cf61ea` | feat: wire board + web_fetch + tapped + shared TTS client into web_server |
 | 2026-11-13 | `6e9f80f` | feat: board button in cosmos â€” opens the live board |
@@ -130,7 +131,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-11-12 | `248c98f` | feat: board layer 3 â€” show/update/remove tools + live board |
 | 2026-11-12 | `1d3ca9b` | feat: board layer 2 â€” widgets expand into blocks server-side |
 | 2026-11-06 | `100b6af` | feat: web_reader layers 4-5 â€” fence, post-read lock, agent wiring, hostile tests |
-| 2026-11-06 | `506df94` | feat: web_reader layer 3 â€” safe fetch + HTML to text + link harvest |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
