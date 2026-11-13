@@ -157,6 +157,9 @@ let running = true;
 /* ═══════════════════════ TIER 3 — states (targets the orb eases toward) ═══ */
 const STATES = {
   idle:      { core:[0.05,0.35,0.42], rim:[0.16,0.85,0.95], bright:0.72, amp:0.10, churn:0.18, glow:0.34, halo:1.00, spin:0.20, size:1.00, rings:0.0 },
+  // Mic requested but no audio yet — a dim ember, honestly distinct from
+  // listening's bright gold, so "waiting for permission" reads as itself.
+  arming:    { core:[0.22,0.11,0.03], rim:[0.78,0.42,0.14], bright:0.80, amp:0.09, churn:0.20, glow:0.40, halo:1.06, spin:0.22, size:1.00, rings:0.0 },
   listening: { core:[0.55,0.32,0.04], rim:[1.00,0.72,0.20], bright:1.05, amp:0.16, churn:0.30, glow:0.62, halo:1.35, spin:0.30, size:1.05, rings:0.0 },
   processing:{ core:[0.10,0.10,0.34], rim:[0.55,0.35,0.95], bright:0.66, amp:0.20, churn:0.85, glow:0.52, halo:1.10, spin:0.55, size:1.00, rings:1.0 },
   speaking:  { core:[0.06,0.40,0.48], rim:[0.20,0.95,1.00], bright:1.15, amp:0.30, churn:0.55, glow:0.70, halo:1.30, spin:0.45, size:1.06, rings:0.0 },
@@ -731,8 +734,10 @@ if(SR){
     'network':'Speech service unreachable — check your connection.','audio-capture':'No microphone found.'
     }[e.error] || ('Mic error: '+e.error); micFail(m); };
   rec.onend=()=>{ micBtn.classList.remove('listening'); if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
-    if(inputEl.value.trim()) sendChat(); else if(stateName==='listening') setState('idle'); };
-  micBtn.onclick=()=>{ if(!MIC_OK){ micFail(MIC_INSECURE_MSG); return; } try{ rec.start(); }catch(e){} };
+    if(inputEl.value.trim()) sendChat(); else if(stateName==='listening'||stateName==='arming') setState('idle'); };
+  // 'arming' = mic requested, audio not yet flowing. rec.onstart flips it to
+  // 'listening' the moment capture actually begins.
+  micBtn.onclick=()=>{ if(!MIC_OK){ micFail(MIC_INSECURE_MSG); return; } setState('arming'); try{ rec.start(); }catch(e){ micFail('Mic error: '+e.message); } };
 }else{
   // No Web Speech API in this browser → record + Deepgram fallback (toggle).
   micBtn.onclick=()=>{ if(!MIC_OK){ micFail(MIC_INSECURE_MSG); return; }
@@ -743,6 +748,7 @@ let mediaRecorder=null, recChunks=[], recMime='audio/webm';
 function pickMime(){ for(const m of ['audio/mp4','audio/webm;codecs=opus','audio/webm']){
   if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } return ''; }
 async function startRecFallback(){
+  setState('arming');   // requested; audio hasn't started yet
   try{ micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
   catch(e){ micFail('Mic blocked — allow microphone access in the browser.'); return; }
   realEvents=true; setState('listening'); micBtn.classList.add('listening'); micRecording=true;
