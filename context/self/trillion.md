@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-13 | `7cf61ea` | feat: wire board + web_fetch + tapped + shared TTS client into web_server |
 | 2026-11-13 | `6e9f80f` | feat: board button in cosmos â€” opens the live board |
 | 2026-11-13 | `4a252d4` | fix: reliable one-click restart (no-admin path blocked by filtered-admin token) |
 | 2026-11-12 | `1d0bb7e` | perf: reuse one ElevenLabs client â€” first-audio 2172ms -> 1871ms |
@@ -130,7 +131,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-11-06 | `100b6af` | feat: web_reader layers 4-5 â€” fence, post-read lock, agent wiring, hostile tests |
 | 2026-11-06 | `506df94` | feat: web_reader layer 3 â€” safe fetch + HTML to text + link harvest |
 | 2026-11-06 | `a9453d9` | feat: web_reader layer 2 â€” SSRF + DNS-rebinding guard |
-| 2026-11-06 | `fa0b35d` | feat: web_reader layer 1 â€” canonical addresses + per-conversation allowlist |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
