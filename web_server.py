@@ -100,7 +100,8 @@ HTML = r"""<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#06060a;color:#e8e8ea;height:100vh;display:flex;flex-direction:column;overflow:hidden}
 #orb-section{flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:20px 0 10px;position:relative}
-#orb-canvas{display:block}
+#orb-canvas{display:block;cursor:pointer}
+body.transiting{transition:opacity .4s ease;opacity:0}
 #orb-label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#2af5ff88;margin-top:6px}
 #status-text{font-size:12px;color:#ffffff44;margin-top:2px;height:16px;text-align:center}
 #voice-banner{font-size:11px;margin-top:8px;padding:4px 12px;border-radius:20px;max-width:520px;text-align:center;line-height:1.4;border:1px solid transparent}
@@ -110,6 +111,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 #chat{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
 body.voice-mode #chat{display:none}
 body.voice-mode #orb-section{flex:1;justify-content:center;padding:0}
+#hud-clock{position:fixed;top:16px;right:16px;text-align:right;z-index:5;pointer-events:none}
+#hud-clock .time{font-size:28px;font-weight:300;color:#2af5ff;letter-spacing:.05em;text-shadow:0 0 12px #2af5ff55}
+#hud-clock .date{font-size:11px;color:#7a8899;letter-spacing:.1em;text-transform:uppercase;margin-top:2px}
+#hud-stats{position:fixed;top:16px;left:16px;width:190px;z-index:5;pointer-events:none}
+#hud-stats .hud-row{margin-bottom:10px}
+#hud-stats .hud-label{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;color:#2af5ffaa}
+#hud-stats .hud-bar{height:3px;background:#1e1e38;border-radius:2px;overflow:hidden}
+#hud-stats .hud-bar-fill{height:100%;background:linear-gradient(90deg,#2af5ff88,#2af5ff);transition:width .6s ease;width:0%}
+#hud-stats .hud-uptime{font-size:10px;color:#7a8899;letter-spacing:.05em}
 #history-panel{position:fixed;top:0;right:-340px;width:320px;height:100vh;background:#0a0a14;border-left:1px solid #1e1e38;padding:16px;overflow-y:auto;transition:right .2s ease;z-index:10}
 #history-panel.open{right:0}
 #history-panel h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#2af5ff;margin-bottom:12px}
@@ -150,8 +160,27 @@ footer{padding:12px 20px;border-top:1px solid #111128;display:flex;gap:8px;flex-
   } catch(e){}
 })();
 </script>
+<div id="hud-clock">
+  <div class="time" id="hud-time">--:--:--</div>
+  <div class="date" id="hud-date">-- --- ----</div>
+</div>
+<div id="hud-stats">
+  <div class="hud-row">
+    <div class="hud-label"><span>CPU</span><span id="hud-cpu-val">--%</span></div>
+    <div class="hud-bar"><div class="hud-bar-fill" id="hud-cpu-fill"></div></div>
+  </div>
+  <div class="hud-row">
+    <div class="hud-label"><span>Memory</span><span id="hud-mem-val">--%</span></div>
+    <div class="hud-bar"><div class="hud-bar-fill" id="hud-mem-fill"></div></div>
+  </div>
+  <div class="hud-row">
+    <div class="hud-label"><span>Disk</span><span id="hud-disk-val">--%</span></div>
+    <div class="hud-bar"><div class="hud-bar-fill" id="hud-disk-fill"></div></div>
+  </div>
+  <div class="hud-uptime">Uptime: <span id="hud-uptime-val">--</span></div>
+</div>
 <div id="orb-section">
-  <canvas id="orb-canvas" width="220" height="220"></canvas>
+  <canvas id="orb-canvas" width="420" height="420" title="Open full cosmic view"></canvas>
   <div id="orb-label">Trillion</div>
   <div id="status-text">ready</div>
   <div id="voice-banner" title="Live ElevenLabs voice status">checking voice…</div>
@@ -174,14 +203,14 @@ footer{padding:12px 20px;border-top:1px solid #111128;display:flex;gap:8px;flex-
 /* ── Orb animation ── */
 const canvas = document.getElementById('orb-canvas');
 const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height, CX = W/2, CY = H/2, R = 80;
+const W = canvas.width, H = canvas.height, CX = W/2, CY = H/2, R = 125;
 let orbState = 'idle'; // idle | listening | speaking
 
-const particles = Array.from({length: 55}, () => ({
+const particles = Array.from({length: 90}, () => ({
   angle: Math.random() * Math.PI * 2,
   radius: Math.random() * R * 0.85,
-  speed: (Math.random() - 0.5) * 0.008,
-  size: Math.random() * 2.2 + 0.4,
+  speed: (Math.random() - 0.5) * 0.016,
+  size: Math.random() * 2.6 + 0.5,
   alpha: Math.random() * 0.7 + 0.2,
   drift: (Math.random() - 0.5) * 0.003,
 }));
@@ -194,6 +223,13 @@ function drawOrb() {
   const isListening = orbState === 'listening';
   const isSpeaking = orbState === 'speaking';
 
+  // continuous breathing motion, even at rest — faster/deeper while speaking
+  const breathe = 1 + (isSpeaking ? 0.06 : isListening ? 0.045 : 0.03) * Math.sin(t * (isSpeaking ? 2.2 : 0.9));
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.scale(breathe, breathe);
+  ctx.translate(-CX, -CY);
+
   // outer glow rings
   const ringAlpha = isSpeaking ? 0.18 + 0.12 * Math.sin(t * 4) : isListening ? 0.22 : 0.08 + 0.04 * Math.sin(t);
   for (let i = 3; i >= 1; i--) {
@@ -201,6 +237,24 @@ function drawOrb() {
     ctx.arc(CX, CY, R + i * 14, 0, Math.PI * 2);
     ctx.strokeStyle = `rgba(42,245,255,${ringAlpha / i})`;
     ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // HUD tick-mark ring (rotating, arc-reactor style)
+  const tickCount = 48, tickRadius = R + 46;
+  for (let i = 0; i < tickCount; i++) {
+    const angle = (i / tickCount) * Math.PI * 2 + t * 0.15;
+    const major = i % 4 === 0;
+    const len = major ? 8 : 4;
+    const x1 = CX + Math.cos(angle) * tickRadius;
+    const y1 = CY + Math.sin(angle) * tickRadius;
+    const x2 = CX + Math.cos(angle) * (tickRadius + len);
+    const y2 = CY + Math.sin(angle) * (tickRadius + len);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = `rgba(42,245,255,${major ? 0.5 : 0.22})`;
+    ctx.lineWidth = major ? 1.4 : 0.8;
     ctx.stroke();
   }
 
@@ -257,9 +311,17 @@ function drawOrb() {
     ctx.fill();
   }
 
+  ctx.restore();
   requestAnimationFrame(drawOrb);
 }
 drawOrb();
+
+// Click the orb to transit into the full-screen cosmic /face view — the
+// two "faces" of Trillion, with a fade between them instead of a hard cut.
+canvas.addEventListener('click', () => {
+  document.body.classList.add('transiting');
+  setTimeout(() => { location.href = '/face'; }, 380);
+});
 
 function setOrbState(s) {
   orbState = s;
@@ -342,6 +404,43 @@ historyBtn.addEventListener('click', async () => {
     historyList.textContent = 'Could not reach server for history.';
   }
 });
+
+/* ── HUD clock + system stats ── */
+function tickClock() {
+  const now = new Date();
+  document.getElementById('hud-time').textContent = now.toLocaleTimeString([], { hour12: false });
+  document.getElementById('hud-date').textContent = now.toLocaleDateString([], { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+function fmtBytes(n) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(1) + ' ' + units[i];
+}
+function fmtUptime(seconds) {
+  const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+async function pollSystemStatus() {
+  try {
+    const r = await fetch('/api/system-status');
+    if (!r.ok) return;
+    const s = await r.json();
+    if (s.error) return;
+    document.getElementById('hud-cpu-val').textContent = Math.round(s.cpu_percent) + '%';
+    document.getElementById('hud-cpu-fill').style.width = s.cpu_percent + '%';
+    document.getElementById('hud-mem-val').textContent = Math.round(s.mem_percent) + '%';
+    document.getElementById('hud-mem-fill').style.width = s.mem_percent + '%';
+    document.getElementById('hud-disk-val').textContent = Math.round(s.disk_percent) + '%';
+    document.getElementById('hud-disk-fill').style.width = s.disk_percent + '%';
+    document.getElementById('hud-uptime-val').textContent = fmtUptime(s.uptime_seconds);
+  } catch (e) { /* HUD stats are best-effort; a failed poll just skips this tick */ }
+}
+pollSystemStatus();
+setInterval(pollSystemStatus, 5000);
 
 function stopAudio() {
   audioQueue = [];
@@ -589,7 +688,7 @@ from trillion.security import http_guard
 # Page shells are served without a token so the browser can bootstrap; the JS
 # then attaches the token to every API call. CSP reports are unauthenticated by
 # nature. Everything else is guarded.
-_OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "service_worker", "phone_icon", "design_preview", "factory_page", "cosmos", "cosmos_agents", "memory_page", "mind_page"}
+_OPEN_ENDPOINTS = {"index", "face", "csp_report", "phone_shell", "manifest", "service_worker", "phone_icon", "design_preview", "factory_page", "cosmos", "cosmos_agents", "memory_page", "mind_page", "board_page"}
 
 # CSP shipped report-only first (see security/audit_shield.CSP_MODE). Widen only
 # by what actually gets blocked, then flip to enforcing.
@@ -613,6 +712,14 @@ _CSP = (
 def _auth_guard():
     """CSRF origin gate (always on) + bearer token + per-IP rate-limit (only when
     TRILLION_TOKEN is set)."""
+    # CORS preflight: browsers send an unauthenticated OPTIONS probe before any
+    # cross-origin POST with a custom header (Authorization). It carries no
+    # token and must not be rate-limited or 401'd — just answered. The actual
+    # CORS headers are added in _security_headers below, scoped to the same
+    # explicit allowlist as check_origin.
+    if request.method == "OPTIONS":
+        return _Response("", status=204)
+
     # CSRF: reject cross-site state-changing requests. CSP reports are exempt
     # (browsers may send them without a matching Origin).
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.endpoint != "csp_report":
@@ -647,6 +754,24 @@ def _auth_guard():
 
 @app.after_request
 def _security_headers(resp):
+    # CORS: only for the explicit trusted-origin allowlist (see
+    # http_guard.check_origin / TRILLION_ALLOWED_ORIGINS) — the widget
+    # embedded on the Starrdam HUD page. Every other origin gets no CORS
+    # headers at all, so a browser blocks it from reading the response even
+    # if the request itself weren't already rejected server-side.
+    origin = request.headers.get("Origin")
+    if origin and origin in http_guard._allowed_origins():
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Vary"] = "Origin"
+        # Chrome's Private Network Access check: an HTTPS page fetching a
+        # localhost target needs this on both the preflight AND the actual
+        # response, or the browser kills the request (bare "Failed to fetch",
+        # no network entry). Sent unconditionally rather than gated on the
+        # preflight-only request header, since the real GET/POST never carries
+        # that header but Chrome checks for the allow header on it anyway.
+        resp.headers["Access-Control-Allow-Private-Network"] = "true"
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault("X-Frame-Options", "DENY")
@@ -696,6 +821,7 @@ def design_preview(project, subpath):
 def chat():
     data = request.get_json(force=True)
     user_message = data.get("message", "").strip()
+    tapped = bool(data.get("tapped"))   # a board tap-to-ask: can never act/approve
     if not user_message:
         return Response("data: [DONE]\n\n", mimetype="text/event-stream")
 
@@ -728,9 +854,9 @@ def chat():
 
         reply_parts = []
         try:
-            for item in agent.run_turn(user_message):
+            for item in agent.run_turn(user_message, tapped=tapped):
                 if isinstance(item, dict) and "tool_start" in item:
-                    yield f"data: {json.dumps({'tool': item['tool_start']})}\n\n"
+                    yield f"data: {json.dumps({'tool': item['tool_start'], 'tool_args': item.get('tool_args')})}\n\n"
                 elif isinstance(item, dict) and "confirm_request" in item:
                     yield f"data: {json.dumps({'confirm': item['confirm_request']})}\n\n"
                 else:
@@ -970,6 +1096,16 @@ def history():
     return {"entries": recent_tool_runs(limit=100)}
 
 
+@app.get("/api/system-status")
+def system_status_api():
+    """Live CPU/memory/disk numbers for the HUD stats panel."""
+    from trillion.tools.system_monitor import system_status_dict
+    try:
+        return system_status_dict()
+    except ImportError:
+        return {"error": "psutil not installed"}, 503
+
+
 @app.get("/voice-status")
 def voice_status():
     """Real ElevenLabs check so the UI can show ground truth about the voice."""
@@ -1029,7 +1165,8 @@ def _stream_elevenlabs(text: str):
             cfg = yaml.safe_load(f)
         voice_id = cfg.get("elevenlabs_voice_id", "EXAVITQu4vr4xnSDxMaL")
         model_id = cfg.get("elevenlabs_model", "eleven_turbo_v2_5")
-        client = elevenlabs.ElevenLabs(api_key=key)
+        from trillion.voice import tts as _tts
+        client = _tts.client()   # shared client — reuse the connection across turns
         audio_stream = client.text_to_speech.stream(
             text=text, voice_id=voice_id, model_id=model_id, output_format="mp3_44100_128",
         )
@@ -1095,6 +1232,37 @@ def cosmos():
     """The living cosmic interface — full-screen 3D orb + sub-agent constellation."""
     html = (Path(__file__).parent / "static" / "cosmos.html").read_text(encoding="utf-8")
     return html, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@app.get("/board")
+def board_page():
+    """The visual board. Layer 1 draws one validated sample of every block; the
+    page itself only ever draws blocks the server produced."""
+    html = (Path(__file__).parent / "static" / "board.html").read_text(encoding="utf-8")
+    return html, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@app.get("/api/board/samples")
+def board_samples():
+    """Server-validated sample of every block type (feeds the style page). The
+    page draws only what passes the same validators the model's output will."""
+    from trillion.board import sample_blocks
+    return {"blocks": sample_blocks()}
+
+
+@app.get("/api/board/widgets")
+def board_widgets():
+    """Sample of every widget, validated + expanded into blocks server-side.
+    The page draws the blocks; the widget recipe lives only on the server."""
+    from trillion.board.samples import sample_widgets
+    return {"widgets": sample_widgets()}
+
+
+@app.get("/api/board")
+def board_live():
+    """The LIVE board — the widgets the agent has actually put up (data/board.json)."""
+    from trillion.board.state import BoardStore
+    return {"widgets": BoardStore().snapshot()}
 
 
 # Non-sensitive display list for the constellation (id/name/specialty/color only —
