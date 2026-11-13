@@ -89,6 +89,7 @@
 <div id="labels"></div>
 <div id="hud"><span class="dot" id="hud-dot"></span><span id="brand">TRILLION</span><span id="state-text">idle</span></div>
 <div id="controls">
+  <button id="board-btn" title="Show the board">▦ board</button>
   <button id="perf-btn" title="Performance mode">perf</button>
 </div>
 <div id="dock"></div>
@@ -956,6 +957,19 @@ addEventListener('pagehide',()=>{
 loadAgents();
 setState('idle');
 requestAnimationFrame(tick);
+</script>
+<script>
+/* Board button: open the live /board (the full board page) in a new tab. Reads
+   the token from localStorage so the board authenticates. An embedded panel was
+   ruled out — Trillion's own X-Frame-Options: DENY (good) blocks framing. */
+(function(){
+  var btn=document.getElementById('board-btn');
+  if(!btn) return;
+  btn.onclick=function(){
+    var t=localStorage.getItem('trillion_token')||'';
+    window.open('/board'+(t?('?token='+encodeURIComponent(t)):''), 'trillion_board');
+  };
+})();
 </script>
 </body>
 </html>

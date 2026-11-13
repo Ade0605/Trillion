@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-13 | `4a252d4` | fix: reliable one-click restart (no-admin path blocked by filtered-admin token) |
 | 2026-11-12 | `1d0bb7e` | perf: reuse one ElevenLabs client â€” first-audio 2172ms -> 1871ms |
 | 2026-11-12 | `8507305` | perf: reuse one Deepgram client â€” STT 1810ms -> 869ms |
 | 2026-11-12 | `5f111de` | fix: Deepgram STT broken on sdk v7 + add honest voice stopwatch |
