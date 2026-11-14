@@ -13,6 +13,12 @@ from .dossier import (parse_dossier, load_seat, Seat, Doctrine, DossierError,
                       VERIFICATION)
 from .gate import gate_citations, is_unsourced
 from .roster import load_roster
+from .convene import convene
+from .store import save_meeting, list_meetings
+from .edit import retire_entry, edit_entry, EditError
+from .tool import register_board_advisors, ask_board
 
 __all__ = ["parse_dossier", "load_seat", "Seat", "Doctrine", "DossierError",
-           "VERIFICATION", "gate_citations", "is_unsourced", "load_roster"]
+           "VERIFICATION", "gate_citations", "is_unsourced", "load_roster",
+           "convene", "save_meeting", "list_meetings", "retire_entry", "edit_entry",
+           "EditError", "register_board_advisors", "ask_board"]

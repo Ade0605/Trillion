@@ -43,8 +43,9 @@ import yaml
 
 log = logging.getLogger("board_advisors")
 
-VERIFICATION = ("sourced", "user")           # 'sourced' = survived the fact-check
-DEFAULT_VERIFICATION = "user"                # unproven unless the file says sourced
+VERIFICATION = ("sourced", "user", "retired")  # 'sourced' survived the fact-check;
+DEFAULT_VERIFICATION = "user"                # 'retired' keeps its id spoken-for but
+#                                              is withheld from meetings (see shown_ids)
 
 _FRONTMATTER = re.compile(r"^\s*---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _SECTION = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)

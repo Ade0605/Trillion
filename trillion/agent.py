@@ -144,6 +144,11 @@ class Agent:
                 register_board_tools(registry, self._board)
             except Exception:
                 pass
+        try:                        # the board of advisors (ask_board)
+            from .board_advisors import register_board_advisors
+            register_board_advisors(registry)
+        except Exception:
+            pass
 
     def _post_read_gate(self, name) -> bool:
         """True if `name` has side effects AND a web page was read this turn, so

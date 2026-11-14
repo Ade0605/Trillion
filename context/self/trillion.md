@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-14 | `6ecb538` | feat: board of advisors tier 5 â€” the chair + deterministic guards |
 | 2026-11-14 | `a5c551c` | feat: board of advisors tier 4 â€” the isolated fan-out |
 | 2026-11-13 | `b8c99e6` | feat: board of advisors tier 3 â€” routing + decline gate |
 | 2026-11-13 | `d2ec6bb` | feat: board of advisors tier 2 â€” researched roster + adversarial fact-check |
@@ -130,7 +131,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-11-12 | `1d0bb7e` | perf: reuse one ElevenLabs client â€” first-audio 2172ms -> 1871ms |
 | 2026-11-12 | `8507305` | perf: reuse one Deepgram client â€” STT 1810ms -> 869ms |
 | 2026-11-12 | `5f111de` | fix: Deepgram STT broken on sdk v7 + add honest voice stopwatch |
-| 2026-11-12 | `cfa5259` | feat: board layer 7 â€” tap-to-ask (safe), completing the board |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
