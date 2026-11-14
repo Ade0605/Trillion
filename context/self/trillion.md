@@ -116,6 +116,7 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 <!-- AUTO-START: recent -->
 | Date | Commit | Change |
 | --- | --- | --- |
+| 2026-11-13 | `b8c99e6` | feat: board of advisors tier 3 â€” routing + decline gate |
 | 2026-11-13 | `d2ec6bb` | feat: board of advisors tier 2 â€” researched roster + adversarial fact-check |
 | 2026-11-13 | `3340f3e` | feat: board of advisors tier 1 â€” dossier format + citation gate |
 | 2026-11-13 | `bd7752c` | feat: cosmos theme gains an auto (match-system) mode |
@@ -130,7 +131,6 @@ _Trillion speaks by default. If asked whether it can talk, the answer is yes —
 | 2026-11-12 | `5f111de` | fix: Deepgram STT broken on sdk v7 + add honest voice stopwatch |
 | 2026-11-12 | `cfa5259` | feat: board layer 7 â€” tap-to-ask (safe), completing the board |
 | 2026-11-12 | `90a2de7` | feat: board layer 6 â€” custom widget from the same blocks |
-| 2026-11-12 | `569b056` | feat: board layer 5 â€” packs gate widgets by connected app |
 <!-- AUTO-END: recent -->
 
 ## Sub-agents
